@@ -1,16 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  ArrowLeft,
-  Flame,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  TrendingDown,
-  Recycle,
-  Sparkles,
-} from "lucide-react"
+import { ArrowLeft, Flame, ChevronRight, Recycle } from "lucide-react"
 import Link from "next/link"
 
 export const dynamic = "force-dynamic"
@@ -54,10 +45,10 @@ export default async function DesperdicioPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
               Desperdicio & Mermas por Área
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500">
+            <p className="text-xs sm:text-sm text-subdued">
               Control de merma recuperable para molienda y material rechazado
             </p>
           </div>
@@ -66,12 +57,12 @@ export default async function DesperdicioPage() {
         <div className="flex items-center gap-2">
           <span
             className={`text-xs px-3 py-1 rounded-full font-bold border ${
-              porcentajeGlobal <= 5
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                : porcentajeGlobal <= 8
-                ? "bg-amber-50 text-amber-800 border-amber-200"
-                : "bg-rose-50 text-rose-800 border-rose-200"
-            }`}
+ porcentajeGlobal <= 5
+ ? "bg-accent/10 text-accent border-accent/30"
+ : porcentajeGlobal <= 8
+ ? "bg-warn/10 text-warn border-warn/30"
+ : "bg-danger/10 text-danger border-danger/30"
+ }`}
           >
             Promedio Planta: {porcentajeGlobal.toFixed(1)}% Desperdicio
           </span>
@@ -80,71 +71,71 @@ export default async function DesperdicioPage() {
 
       {/* Global Plant Scrap KPI Banner */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-xs">
-          <div className="text-[11px] font-medium text-slate-500">Materia Prima Ingresada</div>
+        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
+          <div className="text-[11px] font-medium text-subdued">Materia Prima Ingresada</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-slate-900 tabular-nums">
+            <span className="text-2xl font-bold text-fg tabular-nums">
               {totalEntradaPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-xs font-medium text-slate-500">kg</span>
+            <span className="text-xs font-medium text-subdued">kg</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-400">Total a máquinas</div>
+          <div className="mt-1 text-[11px] text-muted">Total a máquinas</div>
         </div>
 
-        <div className="p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-xs">
-          <div className="text-[11px] font-medium text-slate-500">Producto Conforme (Buenos)</div>
+        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
+          <div className="text-[11px] font-medium text-subdued">Producto Conforme (Buenos)</div>
           <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-emerald-700 tabular-nums">
+            <span className="text-2xl font-bold text-accent tabular-nums">
               {totalBuenosPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-xs font-medium text-slate-500">kg</span>
+            <span className="text-xs font-medium text-subdued">kg</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-400">
+          <div className="mt-1 text-[11px] text-muted">
             {totalEntradaPlanta > 0 ? ((totalBuenosPlanta / totalEntradaPlanta) * 100).toFixed(1) : 0}% rendimiento
           </div>
         </div>
 
-        <div className="p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Merma Recuperable</span>
-            <Recycle className="h-3.5 w-3.5 text-teal-600" />
+            <span className="text-[11px] font-medium text-subdued">Merma Recuperable</span>
+            <Recycle className="h-3.5 w-3.5 text-accent" />
           </div>
           <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-teal-700 tabular-nums">
+            <span className="text-2xl font-bold text-accent tabular-nums">
               {totalMermaPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-xs font-medium text-slate-500">kg</span>
+            <span className="text-xs font-medium text-subdued">kg</span>
           </div>
-          <div className="mt-1 text-[11px] text-teal-600 font-medium">Reutilizable en molino</div>
+          <div className="mt-1 text-[11px] text-accent font-medium">Reutilizable en molino</div>
         </div>
 
-        <div className="p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Rechazo / Contaminado</span>
-            <Flame className="h-3.5 w-3.5 text-rose-500" />
+            <span className="text-[11px] font-medium text-subdued">Rechazo / Contaminado</span>
+            <Flame className="h-3.5 w-3.5 text-danger" />
           </div>
           <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-rose-600 tabular-nums">
+            <span className="text-2xl font-bold text-danger tabular-nums">
               {totalRechazadoPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-xs font-medium text-slate-500">kg</span>
+            <span className="text-xs font-medium text-subdued">kg</span>
           </div>
-          <div className="mt-1 text-[11px] text-rose-600 font-medium">Pérdida no recuperable</div>
+          <div className="mt-1 text-[11px] text-danger font-medium">Pérdida no recuperable</div>
         </div>
       </div>
 
       {/* Orders Scrap Breakdown */}
-      <Card className="border-slate-200/90 shadow-sm bg-white overflow-hidden">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <CardTitle className="text-base font-semibold text-slate-900">
+      <Card className="border-line shadow-sm bg-card overflow-hidden">
+        <CardHeader className="pb-3 border-b border-line">
+          <CardTitle className="text-base font-semibold text-fg">
             Desperdicio Detallado por Orden de Trabajo
           </CardTitle>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Comparativa de pérdida en Extrusión, Impresión y Confección
           </p>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-line">
             {ordenes.map((ot) => {
               const porArea = {
                 EXTRUSION: { entrada: 0, buenos: 0, merma: 0, rechazado: 0 },
@@ -180,23 +171,23 @@ export default async function DesperdicioPage() {
               const isAlarm = pctTotal > 8
 
               return (
-                <div key={ot.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition">
+                <div key={ot.id} className="p-4 space-y-3 hover:bg-elevated/50 transition">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                        <span className="text-xs font-bold text-info bg-info/10 px-2 py-0.5 rounded-md border border-info/30">
                           OT #{ot.numero}
                         </span>
-                        <h3 className="text-sm font-bold text-slate-900">
+                        <h3 className="text-sm font-bold text-fg">
                           {ot.producto}
                         </h3>
                         {ot.medida && (
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-subdued">
                             ({ot.medida})
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-xs text-subdued mt-0.5">
                         Cliente: <strong>{ot.cliente.nombre}</strong> • Pedido: {Number(ot.kgPedidos).toFixed(2)} kg
                       </p>
                     </div>
@@ -205,16 +196,16 @@ export default async function DesperdicioPage() {
                       <div className="text-right">
                         <div
                           className={`text-sm font-bold tabular-nums ${
-                            isAlarm ? "text-rose-600" : "text-slate-800"
-                          }`}
+ isAlarm ? "text-danger" : "text-fg"
+ }`}
                         >
                           {otTotalDesp.toFixed(2)} kg ({pctTotal.toFixed(1)}%)
                         </div>
-                        <div className="text-[11px] text-slate-400">Total desperdicio</div>
+                        <div className="text-[11px] text-muted">Total desperdicio</div>
                       </div>
 
                       <Link href={`/costos/por-ot/${ot.id}`}>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs text-sky-600 hover:text-sky-700">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs text-info hover:text-info">
                           Detalle <ChevronRight className="h-3.5 w-3.5 ml-1" />
                         </Button>
                       </Link>
@@ -237,35 +228,35 @@ export default async function DesperdicioPage() {
                       return (
                         <div
                           key={area}
-                          className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 shadow-2xs"
+                          className="p-3 rounded-xl border border-line bg-card space-y-1.5 shadow-2xs"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800">{label}</span>
+                            <span className="font-bold text-fg">{label}</span>
                             <span
                               className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                                pctArea <= 5
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : pctArea <= 8
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-rose-50 text-rose-700"
-                              }`}
+ pctArea <= 5
+ ? "bg-accent/10 text-accent"
+ : pctArea <= 8
+ ? "bg-warn/10 text-warn"
+ : "bg-danger/10 text-danger"
+ }`}
                             >
                               {pctArea.toFixed(1)}%
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                          <div className="grid grid-cols-2 gap-1 text-[11px] text-subdued pt-1 border-t border-line">
                             <div>
-                              Ent: <strong className="text-slate-700">{d.entrada.toFixed(1)}</strong>
+                              Ent: <strong className="text-subdued">{d.entrada.toFixed(1)}</strong>
                             </div>
                             <div>
-                              Buen: <strong className="text-emerald-700">{d.buenos.toFixed(1)}</strong>
+                              Buen: <strong className="text-accent">{d.buenos.toFixed(1)}</strong>
                             </div>
                             <div>
-                              Merm: <strong className="text-teal-700">{d.merma.toFixed(1)}</strong>
+                              Merm: <strong className="text-accent">{d.merma.toFixed(1)}</strong>
                             </div>
                             <div>
-                              Rech: <strong className="text-rose-600">{d.rechazado.toFixed(1)}</strong>
+                              Rech: <strong className="text-danger">{d.rechazado.toFixed(1)}</strong>
                             </div>
                           </div>
                         </div>
@@ -277,7 +268,7 @@ export default async function DesperdicioPage() {
             })}
 
             {ordenes.length === 0 && (
-              <div className="p-8 text-center text-sm text-slate-500">
+              <div className="p-8 text-center text-sm text-subdued">
                 No hay órdenes de trabajo con registros de producción
               </div>
             )}

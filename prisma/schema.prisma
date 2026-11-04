@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "client" // sin motor Rust: usa el adaptador de pg (ver src/lib/prisma.ts)
 }
 
 datasource db {
@@ -115,6 +116,8 @@ model OrdenTrabajo {
   precioUnitario Decimal                @db.Decimal(12, 4) // por kg
   estado         String                 @default("ABIERTA")
   mezclaNota     String?                // ej. 50 termo + 50 stretch
+  origenKey      String?                @unique // clave de importación de kardex: evita duplicar al reimportar
+  refExterna     String?                // N° de OT tal como figura en el Excel del cliente
   registros      RegistroProduccion[]
   entregas       Entrega[]
   movimientos    MovimientoInventario[]
@@ -144,6 +147,9 @@ model Entrega {
   fecha        DateTime     @default(now())
   kgEntregados Decimal      @db.Decimal(12, 2)
   bultos       Int?
+  origenKey    String?      @unique // clave de importación de kardex
+
+  @@index([ordenId, fecha])
 }
 
 model Pago {
@@ -155,6 +161,9 @@ model Pago {
   fecha      DateTime  @default(now())
   medio      MedioPago @default(QR)
   referencia String?
+  origenKey  String?   @unique // clave de importación de kardex
+
+  @@index([clienteId, fecha])
 }
 
 model Gasto {

@@ -1,13 +1,14 @@
+import { EstadoOrden } from "@/components/ui/estado-orden"
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { ArrowLeft, Plus, ChevronRight, FileText, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, Plus, FileText } from "lucide-react"
 import { auth } from "@/auth"
 
 export default async function OrdenesPage() {
   const session = await auth()
-  const rol = (session?.user as any)?.rol
+  const rol = session?.user?.rol
 
   const ordenes = await prisma.ordenTrabajo.findMany({
     orderBy: { numero: "desc" },
@@ -19,6 +20,7 @@ export default async function OrdenesPage() {
 
   const totalAbiertas = ordenes.filter((o) => o.estado === "ABIERTA").length
   const totalTerminadas = ordenes.filter((o) => o.estado === "TERMINADA").length
+  const totalEntregadas = ordenes.filter((o) => o.estado === "ENTREGADA").length
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
@@ -33,7 +35,7 @@ export default async function OrdenesPage() {
           <div>
             <h1 className="text-xl font-bold tracking-tight">Órdenes de Trabajo</h1>
             <p className="text-xs text-muted-foreground">
-              {ordenes.length} órdenes en total • {totalAbiertas} abiertas • {totalTerminadas} terminadas
+              {ordenes.length} órdenes en total • {totalAbiertas} en producción • {totalTerminadas} producidas • {totalEntregadas} entregadas
             </p>
           </div>
         </div>
@@ -49,7 +51,7 @@ export default async function OrdenesPage() {
 
       {/* Listado con Cards Responsivas (list-page-patterns) */}
       <Card className="rounded-xl border shadow-xs overflow-hidden">
-        <CardHeader className="p-4 pb-3 bg-muted/30 border-b">
+        <CardHeader className="p-4 pb-3 bg-black/[0.03] border-b">
           <CardTitle className="text-sm font-semibold">Listado de Órdenes de Trabajo</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1">
@@ -69,7 +71,7 @@ export default async function OrdenesPage() {
                   <Link
                     key={ot.id}
                     href={`/produccion/ordenes/${ot.id}`}
-                    className="py-4 flex flex-col gap-2 hover:bg-muted/50 -mx-4 px-4 transition-colors block"
+                    className="py-4 flex flex-col gap-2 hover:bg-black/[0.03] -mx-4 px-4 transition-colors block"
                   >
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
@@ -78,17 +80,7 @@ export default async function OrdenesPage() {
                         </span>
                         <span className="text-xs text-muted-foreground">• {ot.cliente.nombre}</span>
                       </div>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          ot.estado === "ABIERTA"
-                            ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                            : ot.estado === "TERMINADA"
-                            ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {ot.estado}
-                      </span>
+                      <EstadoOrden estado={ot.estado} />
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground gap-1">
@@ -101,11 +93,11 @@ export default async function OrdenesPage() {
                     </div>
 
                     {/* Barra de progreso */}
-                    <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-elevated rounded-full h-2 overflow-hidden">
                       <div
                         className={`h-2 rounded-full transition-all duration-300 ${
-                          porcentaje >= 100 ? "bg-emerald-500" : "bg-primary"
-                        }`}
+ porcentaje >= 100 ? "bg-accent" : "bg-info"
+ }`}
                         style={{ width: `${porcentaje}%` }}
                       />
                     </div>

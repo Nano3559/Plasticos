@@ -1,136 +1,55 @@
 "use server"
 
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
-import { parseKardexBuffer } from "@/lib/kardex-parser"
 import { revalidatePath } from "next/cache"
-import { MedioPago } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
+import { getSessionUser } from "@/lib/session"
+import { fail, type ActionError } from "@/lib/action-result"
+import { MAX_ARCHIVOS, procesarArchivo, type ClienteMin, type ResultadoArchivo } from "@/lib/kardex-import"
+import { normalizar } from "@/lib/lectura-excel"
 
-export async function importarKardexArchivos(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+async function procesar(
+  formData: FormData,
+  guardar: boolean
+): Promise<{ resultados: ResultadoArchivo[] } | ActionError> {
+  const user = await getSessionUser()
+  if (!user) return fail("Tu sesión venció. Vuelve a iniciar sesión.")
+  if (user.rol !== "ADMIN" && user.rol !== "GERENCIA") return fail("Solo Administración y Gerencia pueden importar kardex.")
 
-  const files = formData.getAll("archivos") as File[]
-  if (!files || files.length === 0) {
-    throw new Error("No se seleccionaron archivos")
-  }
+  const archivos = formData.getAll("archivos").filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f)
+  if (archivos.length === 0) return fail("No se seleccionaron archivos.")
+  if (archivos.length > MAX_ARCHIVOS) return fail(`Sube como máximo ${MAX_ARCHIVOS} archivos a la vez.`)
+  const permitirParcial = formData.get("permitirParcial") === "1"
 
-  const resultados: {
-    nombre: string
-    entregas: number
-    pagos: number
-    saldoFinal: number
-    exito: boolean
-    error?: string
-  }[] = []
+  const lista = await prisma.cliente.findMany({ select: { id: true, nombre: true, direccion: true, telefono: true } })
+  const clientes = new Map<string, ClienteMin>(lista.map((c) => [normalizar(c.nombre), c]))
 
-  for (const file of files) {
-    if (!file.name.endsWith(".xlsx")) continue
+  const resultados: ResultadoArchivo[] = []
+  // Uno por uno: dos archivos del mismo cliente no deben crear el cliente dos veces
+  for (const file of archivos) resultados.push(await procesarArchivo(file, clientes, guardar, permitirParcial))
 
-    try {
-      const buffer = await file.arrayBuffer()
-      const parsed = parseKardexBuffer(buffer, file.name)
-
-      // 1. Crear o actualizar Cliente
-      let cliente = await prisma.cliente.findFirst({
-        where: {
-          nombre: {
-            equals: parsed.clienteNombre,
-            mode: "insensitive",
-          },
-        },
-      })
-
-      if (!cliente) {
-        cliente = await prisma.cliente.create({
-          data: {
-            nombre: parsed.clienteNombre,
-            direccion: parsed.direccion || null,
-            telefono: parsed.telefono || null,
-            diasCredito: 15,
-          },
-        })
-      } else {
-        await prisma.cliente.update({
-          where: { id: cliente.id },
-          data: {
-            direccion: cliente.direccion || parsed.direccion || null,
-            telefono: cliente.telefono || parsed.telefono || null,
-          },
-        })
-      }
-
-      let countEntregas = 0
-      let countPagos = 0
-
-      // 2. Procesar movimientos
-      for (const mov of parsed.movimientos) {
-        if (mov.tipo === "ENTREGA") {
-          const kg = mov.kgEntregados || 0
-          const precio = mov.precioUnitario || (kg > 0 ? mov.cargo / kg : 40)
-
-          const ot = await prisma.ordenTrabajo.create({
-            data: {
-              clienteId: cliente.id,
-              producto: mov.detalle,
-              medida: mov.medida || null,
-              kgPedidos: kg > 0 ? kg : 100,
-              precioUnitario: precio > 0 ? precio : 40,
-              estado: "ABIERTA",
-              mezclaNota: mov.observaciones || null,
-            },
-          })
-
-          await prisma.entrega.create({
-            data: {
-              ordenId: ot.id,
-              notaRemision: mov.notaRemision || null,
-              fecha: mov.fecha,
-              kgEntregados: kg,
-              bultos: mov.bultos || null,
-            },
-          })
-          countEntregas++
-        } else if (mov.tipo === "PAGO") {
-          await prisma.pago.create({
-            data: {
-              clienteId: cliente.id,
-              monto: mov.abono,
-              fecha: mov.fecha,
-              medio: (mov.medioPago as MedioPago) || MedioPago.OTRO,
-              referencia: mov.detalle,
-            },
-          })
-          countPagos++
-        }
-      }
-
-      resultados.push({
-        nombre: parsed.clienteNombre,
-        entregas: countEntregas,
-        pagos: countPagos,
-        saldoFinal: parsed.saldoFinal,
-        exito: true,
-      })
-    } catch (err: any) {
-      resultados.push({
-        nombre: file.name,
-        entregas: 0,
-        pagos: 0,
-        saldoFinal: 0,
-        exito: false,
-        error: err.message || "Error al procesar archivo",
-      })
+  if (guardar) {
+    for (const ruta of ["/cobranzas", "/cobranzas/kardex", "/cobranzas/cartera", "/produccion/ordenes", "/produccion/clientes", "/dashboard", "/reportes"]) {
+      revalidatePath(ruta)
     }
   }
+  return { resultados }
+}
 
-  revalidatePath("/cobranzas")
-  revalidatePath("/cobranzas/kardex")
-  revalidatePath("/cobranzas/cartera")
-  return resultados
+/** Paso 1: lee los archivos y muestra qué pasaría, sin guardar nada. */
+export async function analizarKardex(formData: FormData) {
+  return procesar(formData, false)
+}
+
+/** Paso 2: guarda. Cada archivo va en su propia transacción: o entra completo o no entra. */
+export async function importarKardex(formData: FormData) {
+  return procesar(formData, true)
 }
 
 export async function obtenerKardexCompleto(clienteId: string) {
+  // Al estar en un archivo "use server", esta función es un endpoint público: hay que validar sesión y rol.
+  const user = await getSessionUser()
+  if (!user || (user.rol !== "ADMIN" && user.rol !== "GERENCIA")) return null
+
   const cliente = await prisma.cliente.findUnique({
     where: { id: clienteId },
     include: {
@@ -175,7 +94,7 @@ export async function obtenerKardexCompleto(clienteId: string) {
         id: e.id,
         fecha: new Date(e.fecha),
         tipo: "ENTREGA",
-        documento: `OT #${o.numero}${e.notaRemision ? ` • NR #${e.notaRemision}` : ""}`,
+        documento: `OT ${o.refExterna ?? `#${o.numero}`}${e.notaRemision ? ` • NR ${e.notaRemision}` : ""}`,
         detalle: o.producto,
         medida: o.medida || undefined,
         kgEntregados: kg,

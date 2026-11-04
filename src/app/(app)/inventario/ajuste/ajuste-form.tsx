@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useTurno } from "@/lib/use-turno"
+import { useState } from "react"
 import { registrarAjuste } from "@/actions/inventario"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,17 +34,10 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
   const [modo, setModo] = useState<"DIRECTO" | "CONTEO_FISICO">("CONTEO_FISICO")
   const [cantidadAjuste, setCantidadAjuste] = useState("")
   const [conteoFisico, setConteoFisico] = useState("")
-  const [turno, setTurno] = useState<"MANANA" | "TARDE" | "NOCHE">("MANANA")
+  const [turno, setTurno] = useTurno()
   const [motivo, setMotivo] = useState(MOTIVOS_AUDITORIA[0])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-
-  useEffect(() => {
-    const hora = new Date().getHours()
-    if (hora >= 6 && hora < 14) setTurno("MANANA")
-    else if (hora >= 14 && hora < 22) setTurno("TARDE")
-    else setTurno("NOCHE")
-  }, [])
 
   const selectedMaterial = materiales.find((m) => m.id === materialId)
   const stockSistema = selectedMaterial?.stock || 0
@@ -80,11 +75,11 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
     formData.append("motivo", motivo)
 
     try {
-      await registrarAjuste(formData)
+      unwrap(await registrarAjuste(formData))
       router.push("/inventario")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al registrar el ajuste")
+    } catch (err) {
+      setError(mensajeError(err, "Error al registrar el ajuste"))
       setLoading(false)
     }
   }
@@ -99,26 +94,26 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
             Ajuste & Auditoría de Stock
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Corrección inmutable con trazabilidad obligatoria
           </p>
         </div>
       </div>
 
-      <Card className="border-amber-200 shadow-sm bg-white">
-        <CardHeader className="pb-3 border-b border-amber-100 bg-amber-50/40">
-          <div className="flex items-center gap-2 text-amber-800">
-            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300">
+      <Card className="border-warn/30 shadow-sm bg-card">
+        <CardHeader className="pb-3 border-b border-warn/30 bg-warn/10">
+          <div className="flex items-center gap-2 text-warn">
+            <div className="p-1.5 rounded-lg bg-warn/15 text-warn border border-warn/30">
               <SlidersHorizontal className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle className="text-base font-semibold text-slate-900">
+              <CardTitle className="text-base font-semibold text-fg">
                 Ajuste de Saldo de Material
               </CardTitle>
-              <p className="text-[11px] text-amber-700">
+              <p className="text-[11px] text-warn">
                 Los registros son inmutables en base de datos.
               </p>
             </div>
@@ -128,14 +123,14 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Material Selector */}
             <div className="space-y-1.5">
-              <Label htmlFor="materialId" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="materialId" className="text-xs font-semibold text-subdued">
                 Material a Ajustar *
               </Label>
               <select
                 id="materialId"
                 value={materialId}
                 onChange={(e) => setMaterialId(e.target.value)}
-                className="w-full h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-amber-500 focus:outline-none"
+                className="w-full h-11 rounded-lg border border-line bg-card px-3 text-sm focus:border-warn/60 focus:outline-none"
                 required
               >
                 {materiales.map((m) => (
@@ -146,9 +141,9 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
               </select>
 
               {selectedMaterial && (
-                <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs flex items-center justify-between">
-                  <span className="text-slate-600">Stock teórico en sistema:</span>
-                  <span className="font-bold text-slate-900 tabular-nums">
+                <div className="p-2.5 rounded-lg border border-line bg-elevated text-xs flex items-center justify-between">
+                  <span className="text-subdued">Stock teórico en sistema:</span>
+                  <span className="font-bold text-fg tabular-nums">
                     {stockSistema.toFixed(2)} {selectedMaterial.unidad}
                   </span>
                 </div>
@@ -157,7 +152,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
 
             {/* Mode Toggle: Conteo Físico vs Ajuste Directo */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Método de Registro
               </Label>
               <div className="grid grid-cols-2 gap-2">
@@ -165,16 +160,16 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                   type="button"
                   onClick={() => setModo("CONTEO_FISICO")}
                   className={`p-2.5 rounded-lg text-xs font-semibold border transition text-left ${
-                    modo === "CONTEO_FISICO"
-                      ? "bg-amber-50 border-amber-400 text-amber-900 shadow-xs"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+ modo === "CONTEO_FISICO"
+ ? "bg-warn/10 border-warn/60 text-warn shadow-xs"
+ : "bg-card border-line text-subdued hover:bg-elevated"
+ }`}
                 >
                   <div className="flex items-center gap-1.5">
-                    <Calculator className="h-4 w-4 text-amber-600" />
+                    <Calculator className="h-4 w-4 text-warn" />
                     <span>Conteo Físico Real</span>
                   </div>
-                  <p className="text-[10px] text-slate-500 font-normal mt-0.5">
+                  <p className="text-[10px] text-subdued font-normal mt-0.5">
                     Ingresas lo que pesaste y el sistema calcula la diferencia
                   </p>
                 </button>
@@ -183,16 +178,16 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                   type="button"
                   onClick={() => setModo("DIRECTO")}
                   className={`p-2.5 rounded-lg text-xs font-semibold border transition text-left ${
-                    modo === "DIRECTO"
-                      ? "bg-amber-50 border-amber-400 text-amber-900 shadow-xs"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+ modo === "DIRECTO"
+ ? "bg-warn/10 border-warn/60 text-warn shadow-xs"
+ : "bg-card border-line text-subdued hover:bg-elevated"
+ }`}
                 >
                   <div className="flex items-center gap-1.5">
-                    <SlidersHorizontal className="h-4 w-4 text-amber-600" />
+                    <SlidersHorizontal className="h-4 w-4 text-warn" />
                     <span>Diferencia Directa</span>
                   </div>
-                  <p className="text-[10px] text-slate-500 font-normal mt-0.5">
+                  <p className="text-[10px] text-subdued font-normal mt-0.5">
                     Ingresas directamente el valor positivo o negativo (+ / -)
                   </p>
                 </button>
@@ -201,8 +196,8 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
 
             {/* Inputs based on selected mode */}
             {modo === "CONTEO_FISICO" ? (
-              <div className="space-y-2 p-3 rounded-xl border border-amber-200 bg-amber-50/30">
-                <Label htmlFor="conteoFisico" className="text-xs font-semibold text-amber-900">
+              <div className="space-y-2 p-3 rounded-xl border border-warn/30 bg-warn/10">
+                <Label htmlFor="conteoFisico" className="text-xs font-semibold text-warn">
                   Stock Físico Pesado en Planta ({selectedMaterial?.unidad || "kg"})
                 </Label>
                 <div className="relative">
@@ -215,24 +210,24 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                     value={conteoFisico}
                     onChange={(e) => setConteoFisico(e.target.value)}
                     required
-                    className="h-12 text-lg font-bold text-slate-900 pr-12 bg-white border-amber-300 focus:border-amber-500"
+                    className="h-12 text-lg font-bold text-fg pr-12 bg-card border-warn/30 focus:border-warn/60"
                   />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
                     {selectedMaterial?.unidad || "kg"}
                   </span>
                 </div>
 
                 {conteoFisico !== "" && (
-                  <div className="pt-2 border-t border-amber-200/80 flex items-center justify-between text-xs">
-                    <span className="text-slate-600">Ajuste resultante a registrar:</span>
+                  <div className="pt-2 border-t border-warn/30 flex items-center justify-between text-xs">
+                    <span className="text-subdued">Ajuste resultante a registrar:</span>
                     <span
                       className={`font-bold tabular-nums text-sm ${
-                        deltaCalculado > 0
-                          ? "text-emerald-700"
-                          : deltaCalculado < 0
-                          ? "text-rose-600"
-                          : "text-slate-600"
-                      }`}
+ deltaCalculado > 0
+ ? "text-accent"
+ : deltaCalculado < 0
+ ? "text-danger"
+ : "text-subdued"
+ }`}
                     >
                       {deltaCalculado > 0 ? `+${deltaCalculado.toFixed(2)}` : deltaCalculado.toFixed(2)}{" "}
                       {selectedMaterial?.unidad}
@@ -242,7 +237,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
               </div>
             ) : (
               <div className="space-y-2">
-                <Label htmlFor="cantidadAjuste" className="text-xs font-semibold text-slate-700">
+                <Label htmlFor="cantidadAjuste" className="text-xs font-semibold text-subdued">
                   Cantidad a Ajustar (+ suma / - resta) *
                 </Label>
                 <Input
@@ -254,9 +249,9 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                   value={cantidadAjuste}
                   onChange={(e) => setCantidadAjuste(e.target.value)}
                   required
-                  className="h-12 text-lg font-bold text-slate-900 focus:border-amber-500"
+                  className="h-12 text-lg font-bold text-fg focus:border-warn/60"
                 />
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-subdued">
                   Usa signo menos (-) para mermas o reducciones.
                 </p>
               </div>
@@ -264,7 +259,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
 
             {/* Turno */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Turno de Auditoría *
               </Label>
               <div className="grid grid-cols-3 gap-2">
@@ -274,10 +269,10 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                     type="button"
                     onClick={() => setTurno(t)}
                     className={`h-10 rounded-lg text-xs font-semibold transition border ${
-                      turno === t
-                        ? "bg-amber-600 text-white border-amber-600 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
+ turno === t
+ ? "bg-warn text-white border-warn/60 shadow-xs"
+ : "bg-card text-subdued border-line hover:bg-elevated"
+ }`}
                   >
                     Turno {t === "MANANA" ? "Mañana" : t === "TARDE" ? "Tarde" : "Noche"}
                   </button>
@@ -287,8 +282,8 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
 
             {/* Motivo Obligatorio */}
             <div className="space-y-1.5">
-              <Label htmlFor="motivo" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+              <Label htmlFor="motivo" className="text-xs font-semibold text-subdued flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 text-warn" />
                 Motivo / Justificación de Auditoría *
               </Label>
               <Input
@@ -305,7 +300,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
                     key={m}
                     type="button"
                     onClick={() => setMotivo(m)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+                    className="text-[10px] px-2 py-0.5 rounded bg-highlight hover:bg-highlight text-subdued transition"
                   >
                     {m}
                   </button>
@@ -314,7 +309,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
             </div>
 
             {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-center gap-2">
+              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -323,7 +318,7 @@ export function AjusteForm({ materiales }: { materiales: MaterialConStock[] }) {
             <Button
               type="submit"
               disabled={loading || finalAdjustment === 0}
-              className="w-full h-12 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm shadow-sm transition gap-2"
+              className="w-full h-12 bg-warn hover:bg-warn/90 text-white font-semibold text-sm shadow-sm transition gap-2"
             >
               {loading ? (
                 <span>Asentando ajuste...</span>

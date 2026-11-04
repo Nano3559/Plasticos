@@ -1,7 +1,10 @@
 "use client"
 
+import { formatBs } from "@/lib/formato"
 import { useState } from "react"
 import { registrarPago } from "@/actions/cobranzas"
+import { unwrap, mensajeError } from "@/lib/action-result"
+import { hoyLocal } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,8 +43,9 @@ export function PagoForm({
   const [clienteId, setClienteId] = useState(clientes[0]?.id || "")
   const [ordenId, setOrdenId] = useState("")
   const [monto, setMonto] = useState("")
-  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
-  const [medio, setMedio] = useState<"QR" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO">("QR")
+  const [fecha, setFecha] = useState(hoyLocal)
+  type MedioPago = "QR" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO"
+  const [medio, setMedio] = useState<MedioPago>("QR")
   const [referencia, setReferencia] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -72,11 +76,11 @@ export function PagoForm({
     if (referencia) formData.append("referencia", referencia)
 
     try {
-      await registrarPago(formData)
+      unwrap(await registrarPago(formData))
       router.push("/cobranzas")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al asentar el abono")
+    } catch (err) {
+      setError(mensajeError(err, "Error al asentar el abono"))
       setLoading(false)
     }
   }
@@ -91,22 +95,22 @@ export function PagoForm({
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
             Abono & Cobranza
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Registro de pagos para amortizar deuda de remisiones en el Kardex
           </p>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+      <Card className="border-line shadow-sm bg-card">
+        <CardHeader className="pb-3 border-b border-line">
+          <div className="flex items-center gap-2 text-accent">
+            <div className="p-1.5 rounded-lg bg-accent/10 text-accent border border-accent/30">
               <Banknote className="h-4 w-4" />
             </div>
-            <CardTitle className="text-base font-semibold text-slate-900">
+            <CardTitle className="text-base font-semibold text-fg">
               Registrar Cobro
             </CardTitle>
           </div>
@@ -115,7 +119,7 @@ export function PagoForm({
           <form onSubmit={onSubmit} className="space-y-4">
             {/* Cliente */}
             <div className="space-y-1.5">
-              <Label htmlFor="clienteId" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="clienteId" className="text-xs font-semibold text-subdued">
                 Cliente *
               </Label>
               <select
@@ -125,7 +129,7 @@ export function PagoForm({
                   setClienteId(e.target.value)
                   setOrdenId("")
                 }}
-                className="w-full h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+                className="w-full h-11 rounded-lg border border-line bg-card px-3 text-sm focus:border-accent/60 focus:outline-none"
                 required
               >
                 {clientes.map((c) => (
@@ -138,7 +142,7 @@ export function PagoForm({
 
             {/* Fecha */}
             <div className="space-y-1.5">
-              <Label htmlFor="fecha" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="fecha" className="text-xs font-semibold text-subdued">
                 Fecha del Pago *
               </Label>
               <Input
@@ -153,8 +157,8 @@ export function PagoForm({
 
             {/* Monto Input */}
             <div className="space-y-2">
-              <Label htmlFor="monto" className="text-xs font-semibold text-slate-700">
-                Monto Abonado (Bs.) *
+              <Label htmlFor="monto" className="text-xs font-semibold text-subdued">
+                Monto Abonado (Bs) *
               </Label>
               <div className="relative">
                 <Input
@@ -166,17 +170,15 @@ export function PagoForm({
                   value={monto}
                   onChange={(e) => setMonto(e.target.value)}
                   required
-                  className="h-12 text-lg font-bold text-slate-900 pr-12 focus:border-emerald-500"
+                  className="h-12 text-lg font-bold text-fg pr-12 focus:border-accent/60"
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                  Bs.
-                </span>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">Bs</span>
               </div>
             </div>
 
             {/* Medio de Pago Selector Pills */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Canal de Cobro *
               </Label>
               <div className="grid grid-cols-2 gap-2">
@@ -187,18 +189,18 @@ export function PagoForm({
                     <button
                       key={m.key}
                       type="button"
-                      onClick={() => setMedio(m.key as any)}
+                      onClick={() => setMedio(m.key as MedioPago)}
                       className={`p-2.5 rounded-xl border text-left transition ${
-                        active
-                          ? "bg-emerald-50/80 border-emerald-500 text-emerald-950 shadow-xs"
-                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                      }`}
+ active
+ ? "bg-accent/10 border-accent/60 text-accent shadow-xs"
+ : "bg-card border-line text-subdued hover:bg-elevated"
+ }`}
                     >
                       <div className="flex items-center gap-1.5">
-                        <Icon className={`h-4 w-4 ${active ? "text-emerald-700" : "text-slate-400"}`} />
+                        <Icon className={`h-4 w-4 ${active ? "text-accent" : "text-muted"}`} />
                         <span className="text-xs font-bold">{m.label}</span>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                      <p className="text-[10px] text-subdued mt-0.5 truncate">
                         {m.desc}
                       </p>
                     </button>
@@ -209,7 +211,7 @@ export function PagoForm({
 
             {/* Referencia Comprobante */}
             <div className="space-y-1.5">
-              <Label htmlFor="referencia" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="referencia" className="text-xs font-semibold text-subdued">
                 N° de Comprobante / Transacción (Opcional)
               </Label>
               <Input
@@ -224,14 +226,14 @@ export function PagoForm({
             {/* Orden de Trabajo Vinculada (Opcional) */}
             {ordenesDelCliente.length > 0 && (
               <div className="space-y-1.5">
-                <Label htmlFor="ordenId" className="text-xs font-semibold text-slate-700">
+                <Label htmlFor="ordenId" className="text-xs font-semibold text-subdued">
                   Amortizar a Pedido Específico (Opcional)
                 </Label>
                 <select
                   id="ordenId"
                   value={ordenId}
                   onChange={(e) => setOrdenId(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-line bg-card px-3 text-sm focus:border-accent/60 focus:outline-none"
                 >
                   <option value="">Abono a cuenta general de cliente</option>
                   {ordenesDelCliente.map((ot) => (
@@ -244,7 +246,7 @@ export function PagoForm({
             )}
 
             {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-center gap-2">
+              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -253,14 +255,14 @@ export function PagoForm({
             <Button
               type="submit"
               disabled={loading || montoNum <= 0}
-              className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-sm transition gap-2"
+              className="w-full h-12 bg-brand hover:bg-brand-hover text-on-brand font-semibold text-sm shadow-sm transition gap-2"
             >
               {loading ? (
                 <span>Asentando abono...</span>
               ) : (
                 <>
                   <Check className="h-4 w-4" />
-                  <span>Registrar Cobro de Bs. {montoNum.toFixed(2)}</span>
+                  <span>Registrar Cobro de {formatBs(montoNum)}</span>
                 </>
               )}
             </Button>

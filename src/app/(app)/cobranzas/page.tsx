@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Plus, Users, Receipt, FileSpreadsheet, Truck, ChevronRight } from "lucide-react"
+import { Plus, Users, FileSpreadsheet, Truck, ChevronRight } from "lucide-react"
 
 export default async function CobranzasPage() {
   const clientes = await prisma.cliente.findMany({
@@ -36,7 +36,7 @@ export default async function CobranzasPage() {
             variant="outline"
             className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-primary/50 hover:bg-primary/5 transition-all shadow-xs"
           >
-            <FileSpreadsheet className="h-5 w-5 text-indigo-600" />
+            <FileSpreadsheet className="h-5 w-5 text-info" />
             <span className="text-xs font-semibold">Kardex de Clientes</span>
           </Button>
         </Link>
@@ -44,9 +44,9 @@ export default async function CobranzasPage() {
         <Link href="/cobranzas/pago" className="block">
           <Button
             variant="outline"
-            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all shadow-xs"
+            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-accent/50 hover:bg-accent/5 transition-all shadow-xs"
           >
-            <Plus className="h-5 w-5 text-emerald-600" />
+            <Plus className="h-5 w-5 text-accent" />
             <span className="text-xs font-semibold">Registrar Cobro</span>
           </Button>
         </Link>
@@ -54,9 +54,9 @@ export default async function CobranzasPage() {
         <Link href="/cobranzas/entrega" className="block">
           <Button
             variant="outline"
-            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-blue-500/50 hover:bg-blue-500/5 transition-all shadow-xs"
+            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-info/50 hover:bg-info/5 transition-all shadow-xs"
           >
-            <Truck className="h-5 w-5 text-blue-600" />
+            <Truck className="h-5 w-5 text-info" />
             <span className="text-xs font-semibold">Nueva Entrega</span>
           </Button>
         </Link>
@@ -64,9 +64,9 @@ export default async function CobranzasPage() {
         <Link href="/cobranzas/cartera" className="block">
           <Button
             variant="outline"
-            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-amber-500/50 hover:bg-amber-500/5 transition-all shadow-xs"
+            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-warn/50 hover:bg-warn/5 transition-all shadow-xs"
           >
-            <Users className="h-5 w-5 text-amber-600" />
+            <Users className="h-5 w-5 text-warn" />
             <span className="text-xs font-semibold">Cartera por Antigüedad</span>
           </Button>
         </Link>
@@ -74,7 +74,7 @@ export default async function CobranzasPage() {
 
       {/* Listado de Clientes con enlace a Kardex */}
       <Card className="rounded-xl border shadow-xs overflow-hidden">
-        <CardHeader className="p-4 pb-3 bg-muted/30 border-b">
+        <CardHeader className="p-4 pb-3 bg-black/[0.03] border-b">
           <CardTitle className="text-sm font-semibold">Clientes con Cuenta Corriente</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1">
@@ -88,7 +88,7 @@ export default async function CobranzasPage() {
                 <Link
                   key={c.id}
                   href={`/cobranzas/kardex?clienteId=${c.id}`}
-                  className="py-3.5 flex items-center justify-between hover:bg-muted/50 -mx-4 px-4 transition-colors group"
+                  className="py-3.5 flex items-center justify-between hover:bg-black/[0.03] -mx-4 px-4 transition-colors group"
                 >
                   <div>
                     <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">

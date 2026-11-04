@@ -27,14 +27,27 @@ export default async function DetalleMaterialPage({
     },
   })
 
-  let runningBalance = 0
-  const movimientosConSaldo = movimientosAsc.map((m) => {
+  const movimientosConSaldo = movimientosAsc.reduce<
+    {
+      id: string
+      tipo: "ENTRADA" | "SALIDA" | "AJUSTE"
+      cantidad: number
+      costoUnitario: number | null
+      turno: string
+      motivo: string | null
+      proveedor: string | null
+      lote: string | null
+      ordenNumero: number | null
+      userName: string
+      createdAt: string
+      saldoAcumulado: number
+    }[]
+  >((acc, m) => {
     const cant = Number(m.cantidad)
-    if (m.tipo === "ENTRADA") runningBalance += cant
-    else if (m.tipo === "SALIDA") runningBalance -= cant
-    else if (m.tipo === "AJUSTE") runningBalance += cant
-
-    return {
+    const anterior = acc.length > 0 ? acc[acc.length - 1].saldoAcumulado : 0
+    // ENTRADA suma, SALIDA resta y el AJUSTE ya trae su propio signo
+    const saldoAcumulado = m.tipo === "SALIDA" ? anterior - cant : anterior + cant
+    acc.push({
       id: m.id,
       tipo: m.tipo as "ENTRADA" | "SALIDA" | "AJUSTE",
       cantidad: cant,
@@ -46,9 +59,10 @@ export default async function DetalleMaterialPage({
       ordenNumero: m.orden?.numero ?? null,
       userName: m.user.nombre,
       createdAt: m.createdAt.toISOString(),
-      saldoAcumulado: runningBalance,
-    }
-  })
+      saldoAcumulado,
+    })
+    return acc
+  }, [])
 
   // Invert back to newest-first for presentation
   const movimientosDesc = [...movimientosConSaldo].reverse()
@@ -62,7 +76,7 @@ export default async function DetalleMaterialPage({
         unidad: material.unidad,
         stockMinimo: Number(material.stockMinimo),
         costoPromedio: Number(material.costoPromedio),
-        stock: runningBalance,
+        stock: movimientosConSaldo.at(-1)?.saldoAcumulado ?? 0,
       }}
       movimientos={movimientosDesc}
     />

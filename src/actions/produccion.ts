@@ -1,22 +1,23 @@
 "use server"
 
-import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { clienteSchema, ordenTrabajoSchema, registroProduccionSchema } from "@/lib/schemas/produccion"
 import { revalidatePath } from "next/cache"
+import { fail } from "@/lib/action-result"
 
 export async function crearCliente(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
-  if (rol !== "ADMIN" && rol !== "GERENCIA") throw new Error("Sin permisos")
+  const rol = user.rol
+  if (rol !== "ADMIN" && rol !== "GERENCIA") return fail("Sin permisos")
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = clienteSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   await prisma.cliente.create({
@@ -27,17 +28,17 @@ export async function crearCliente(formData: FormData) {
 }
 
 export async function crearOrdenTrabajo(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
-  if (rol !== "ADMIN" && rol !== "GERENCIA") throw new Error("Sin permisos")
+  const rol = user.rol
+  if (rol !== "ADMIN" && rol !== "GERENCIA") return fail("Sin permisos")
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = ordenTrabajoSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   await prisma.ordenTrabajo.create({
@@ -48,27 +49,31 @@ export async function crearOrdenTrabajo(formData: FormData) {
 }
 
 export async function registrarProduccion(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
+  const rol = user.rol
   if (rol !== "OPERADOR" && rol !== "ADMIN" && rol !== "GERENCIA") {
-    throw new Error("Sin permisos")
+    return fail("Sin permisos")
   }
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = registroProduccionSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   const data = parsed.data
 
+  const orden = await prisma.ordenTrabajo.findUnique({ where: { id: data.ordenId }, select: { estado: true } })
+  if (!orden) return fail("La orden de trabajo no existe")
+  if (orden.estado !== "ABIERTA") return fail("La orden está cerrada. Reábrela para registrar producción.")
+
   await prisma.registroProduccion.create({
     data: {
       ...data,
-      userId: (session.user as any).id,
+      userId: user.id,
     },
   })
 
@@ -77,11 +82,12 @@ export async function registrarProduccion(formData: FormData) {
 }
 
 export async function cambiarEstadoOrden(ordenId: string, estado: string) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
-  if (rol !== "ADMIN" && rol !== "GERENCIA") throw new Error("Sin permisos")
+  const rol = user.rol
+  if (rol !== "ADMIN" && rol !== "GERENCIA") return fail("Sin permisos")
+  if (estado !== "ABIERTA" && estado !== "TERMINADA" && estado !== "ENTREGADA") return fail("Estado no válido")
 
   await prisma.ordenTrabajo.update({
     where: { id: ordenId },

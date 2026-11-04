@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/figtree";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,10 +15,10 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className="h-full antialiased font-sans"
+      className="h-full bg-canvas"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
+      <body className="min-h-full font-sans" suppressHydrationWarning>
         {children}
       </body>
     </html>

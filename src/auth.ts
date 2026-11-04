@@ -46,22 +46,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.rol = (user as any).rol
-        token.id = user.id
-      }
-      return token
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        Object.assign(session.user, {
-          rol: token.rol,
-          id: token.id,
-        })
-      }
-      return session
-    },
-  },
 })

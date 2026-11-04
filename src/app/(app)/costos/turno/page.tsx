@@ -1,7 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useTurno } from "@/lib/use-turno"
+import { formatBs } from "@/lib/formato"
+import { useState } from "react"
 import { registrarCostoTurno } from "@/actions/costos"
+import { unwrap, mensajeError } from "@/lib/action-result"
+import { hoyLocal } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,19 +19,12 @@ const PRESETS_ENERGIA = [150, 250, 350, 500]
 
 export default function CostoTurnoPage() {
   const router = useRouter()
-  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
-  const [turno, setTurno] = useState<"MANANA" | "TARDE" | "NOCHE">("MANANA")
+  const [fecha, setFecha] = useState(hoyLocal)
+  const [turno, setTurno] = useTurno()
   const [manoObra, setManoObra] = useState("")
   const [energia, setEnergia] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-
-  useEffect(() => {
-    const hora = new Date().getHours()
-    if (hora >= 6 && hora < 14) setTurno("MANANA")
-    else if (hora >= 14 && hora < 22) setTurno("TARDE")
-    else setTurno("NOCHE")
-  }, [])
 
   const moNum = Number(manoObra) || 0
   const enNum = Number(energia) || 0
@@ -50,11 +47,11 @@ export default function CostoTurnoPage() {
     formData.append("energia", energia)
 
     try {
-      await registrarCostoTurno(formData)
+      unwrap(await registrarCostoTurno(formData))
       router.push("/costos")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al registrar costos del turno")
+    } catch (err) {
+      setError(mensajeError(err, "Error al registrar costos del turno"))
       setLoading(false)
     }
   }
@@ -69,22 +66,22 @@ export default function CostoTurnoPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
             Costo Operativo por Turno
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Asignación de costos para el cálculo industrial de conversión por 100 kg
           </p>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-sky-700">
-            <div className="p-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200">
+      <Card className="border-line shadow-sm bg-card">
+        <CardHeader className="pb-3 border-b border-line">
+          <div className="flex items-center gap-2 text-info">
+            <div className="p-1.5 rounded-lg bg-info/10 text-info border border-info/30">
               <Calculator className="h-4 w-4" />
             </div>
-            <CardTitle className="text-base font-semibold text-slate-900">
+            <CardTitle className="text-base font-semibold text-fg">
               Planilla & Electricidad del Turno
             </CardTitle>
           </div>
@@ -93,7 +90,7 @@ export default function CostoTurnoPage() {
           <form onSubmit={onSubmit} className="space-y-4">
             {/* Fecha */}
             <div className="space-y-1.5">
-              <Label htmlFor="fecha" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="fecha" className="text-xs font-semibold text-subdued">
                 Fecha del Turno *
               </Label>
               <Input
@@ -109,7 +106,7 @@ export default function CostoTurnoPage() {
 
             {/* Turno Selector */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Turno *
               </Label>
               <div className="grid grid-cols-3 gap-2">
@@ -119,10 +116,10 @@ export default function CostoTurnoPage() {
                     type="button"
                     onClick={() => setTurno(t)}
                     className={`h-10 rounded-lg text-xs font-semibold transition border ${
-                      turno === t
-                        ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
+ turno === t
+ ? "bg-brand text-on-brand border-brand shadow-xs"
+ : "bg-card text-subdued border-line hover:bg-elevated"
+ }`}
                   >
                     Turno {t === "MANANA" ? "Mañana" : t === "TARDE" ? "Tarde" : "Noche"}
                   </button>
@@ -132,9 +129,9 @@ export default function CostoTurnoPage() {
 
             {/* Mano de Obra Input */}
             <div className="space-y-2">
-              <Label htmlFor="manoObra" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-slate-500" />
-                Mano de Obra (Bs.) *
+              <Label htmlFor="manoObra" className="text-xs font-semibold text-subdued flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-subdued" />
+                Mano de Obra (Bs) *
               </Label>
               <div className="relative">
                 <Input
@@ -147,22 +144,20 @@ export default function CostoTurnoPage() {
                   value={manoObra}
                   onChange={(e) => setManoObra(e.target.value)}
                   required
-                  className="h-11 text-base font-bold text-slate-900 pr-12 focus:border-sky-500"
+                  className="h-11 text-base font-bold text-fg pr-12 focus:border-info/60"
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                  Bs.
-                </span>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">Bs</span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-slate-400">Presets:</span>
+                <span className="text-[11px] text-muted">Presets:</span>
                 {PRESETS_MO.map((val) => (
                   <button
                     key={val}
                     type="button"
                     onClick={() => setManoObra(val.toString())}
-                    className="text-xs px-2 py-0.5 rounded bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 font-semibold transition"
+                    className="text-xs px-2 py-0.5 rounded bg-highlight hover:bg-info/10 hover:text-info text-subdued font-semibold transition"
                   >
-                    Bs. {val}
+                    Bs {val}
                   </button>
                 ))}
               </div>
@@ -170,9 +165,9 @@ export default function CostoTurnoPage() {
 
             {/* Energía Eléctrica Input */}
             <div className="space-y-2">
-              <Label htmlFor="energia" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-amber-500" />
-                Energía Eléctrica Consumida (Bs.) *
+              <Label htmlFor="energia" className="text-xs font-semibold text-subdued flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 text-warn" />
+                Energía Eléctrica Consumida (Bs) *
               </Label>
               <div className="relative">
                 <Input
@@ -185,44 +180,42 @@ export default function CostoTurnoPage() {
                   value={energia}
                   onChange={(e) => setEnergia(e.target.value)}
                   required
-                  className="h-11 text-base font-bold text-slate-900 pr-12 focus:border-sky-500"
+                  className="h-11 text-base font-bold text-fg pr-12 focus:border-info/60"
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                  Bs.
-                </span>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">Bs</span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-slate-400">Presets:</span>
+                <span className="text-[11px] text-muted">Presets:</span>
                 {PRESETS_ENERGIA.map((val) => (
                   <button
                     key={val}
                     type="button"
                     onClick={() => setEnergia(val.toString())}
-                    className="text-xs px-2 py-0.5 rounded bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 font-semibold transition"
+                    className="text-xs px-2 py-0.5 rounded bg-highlight hover:bg-warn/10 hover:text-warn text-subdued font-semibold transition"
                   >
-                    Bs. {val}
+                    Bs {val}
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Total Live Preview */}
-            <div className="p-3.5 rounded-xl border border-sky-100 bg-sky-50/50 flex items-center justify-between">
+            <div className="p-3.5 rounded-xl border border-info/30 bg-info/10 flex items-center justify-between">
               <div>
-                <span className="text-xs font-semibold text-sky-900">
+                <span className="text-xs font-semibold text-info">
                   Total Costo Directo del Turno:
                 </span>
-                <p className="text-[11px] text-sky-700">
+                <p className="text-[11px] text-info">
                   Mano de obra + Energía
                 </p>
               </div>
-              <div className="text-lg font-bold text-sky-950 tabular-nums">
-                Bs. {totalTurno.toFixed(2)}
+              <div className="text-lg font-bold text-info tabular-nums">
+                {formatBs(totalTurno)}
               </div>
             </div>
 
             {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-center gap-2">
+              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -231,7 +224,7 @@ export default function CostoTurnoPage() {
             <Button
               type="submit"
               disabled={loading || totalTurno <= 0}
-              className="w-full h-12 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm shadow-sm transition gap-2"
+              className="w-full h-12 bg-brand hover:bg-brand-hover text-on-brand font-semibold text-sm shadow-sm transition gap-2"
             >
               {loading ? (
                 <span>Guardando costos...</span>

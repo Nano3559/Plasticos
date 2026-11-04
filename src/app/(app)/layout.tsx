@@ -9,5 +9,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login")
   }
 
-  return <AppShell user={{ name: session.user.name, rol: (session.user as any).rol }}>{children}</AppShell>
+  return <AppShell user={{ name: session.user.name, rol: session?.user?.rol }}>{children}</AppShell>
 }

@@ -1,13 +1,15 @@
 "use client"
 
+import { formatBs } from "@/lib/formato"
 import { useState } from "react"
 import { crearOrdenTrabajo } from "@/actions/produccion"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Plus, Sparkles, DollarSign, Scale, UserPlus } from "lucide-react"
+import { ArrowLeft, UserPlus } from "lucide-react"
 import Link from "next/link"
 
 const mezclasSugeridas = [
@@ -18,7 +20,7 @@ const mezclasSugeridas = [
   "Recuperado Negro Reforzado",
 ]
 
-export function NuevaOrdenForm({ clientes }: { clientes: any[] }) {
+export function NuevaOrdenForm({ clientes }: { clientes: { id: string; nombre: string; diasCredito: number }[] }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -39,11 +41,11 @@ export function NuevaOrdenForm({ clientes }: { clientes: any[] }) {
     const formData = new FormData(e.currentTarget)
 
     try {
-      await crearOrdenTrabajo(formData)
+      unwrap(await crearOrdenTrabajo(formData))
       router.push("/produccion/ordenes")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al crear orden")
+    } catch (err) {
+      setError(mensajeError(err, "Error al crear orden"))
       setLoading(false)
     }
   }
@@ -64,7 +66,7 @@ export function NuevaOrdenForm({ clientes }: { clientes: any[] }) {
       </div>
 
       <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2 bg-muted/30 border-b">
+        <CardHeader className="p-4 pb-2 bg-black/[0.03] border-b">
           <CardTitle className="text-sm font-semibold">Detalles del Pedido</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-3">
@@ -171,7 +173,7 @@ export function NuevaOrdenForm({ clientes }: { clientes: any[] }) {
               <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl flex items-center justify-between text-xs">
                 <span className="text-muted-foreground font-medium">Valor total del pedido estimado:</span>
                 <span className="text-sm font-bold text-primary font-mono">
-                  ${totalEstimado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatBs(totalEstimado)}
                 </span>
               </div>
             )}
@@ -198,7 +200,7 @@ export function NuevaOrdenForm({ clientes }: { clientes: any[] }) {
                     key={sug}
                     type="button"
                     onClick={() => setMezclaNota(sug)}
-                    className="text-[10px] px-2 py-1 rounded-md border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-[10px] px-2 py-1 rounded-md border bg-black/[0.03] hover:bg-elevated text-muted-foreground hover:text-foreground transition-colors"
                   >
                     + {sug}
                   </button>

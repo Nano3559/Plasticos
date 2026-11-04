@@ -3,7 +3,7 @@ import { RegistroForm } from "./registro-form"
 
 export default async function RegistroPage() {
   const ordenes = await prisma.ordenTrabajo.findMany({
-    where: { estado: { in: ["ABIERTA", "EN_PROCESO"] } },
+    where: { estado: "ABIERTA" },
     orderBy: { fechaIngreso: "desc" },
     include: {
       cliente: { select: { id: true, nombre: true } },

@@ -1,13 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useTurno } from "@/lib/use-turno"
+import { formatBs } from "@/lib/formato"
+import { useState } from "react"
 import { registrarEntrada } from "@/actions/inventario"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowDownToLine, Check, Sparkles, Building2, Tag, Calendar, AlertCircle } from "lucide-react"
+import { ArrowLeft, ArrowDownToLine, Check, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
 interface MaterialOption {
@@ -25,28 +28,22 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
   const router = useRouter()
   const [materialId, setMaterialId] = useState(materiales[0]?.id || "")
   const [cantidad, setCantidad] = useState("")
-  const [turno, setTurno] = useState<"MANANA" | "TARDE" | "NOCHE">("MANANA")
+  const [turno, setTurno] = useTurno()
   const [proveedor, setProveedor] = useState("")
   const [lote, setLote] = useState("")
-  const [costoUnitario, setCostoUnitario] = useState("")
+  const [costoUnitario, setCostoUnitario] = useState(() => {
+    const m = materiales[0]
+    return m && m.costoPromedio > 0 ? m.costoPromedio.toString() : ""
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // Auto-detect shift by local hour
-  useEffect(() => {
-    const hora = new Date().getHours()
-    if (hora >= 6 && hora < 14) setTurno("MANANA")
-    else if (hora >= 14 && hora < 22) setTurno("TARDE")
-    else setTurno("NOCHE")
-  }, [])
-
-  // Auto-fill typical cost when material changes
-  useEffect(() => {
-    const mat = materiales.find((m) => m.id === materialId)
-    if (mat && mat.costoPromedio > 0 && !costoUnitario) {
-      setCostoUnitario(mat.costoPromedio.toString())
-    }
-  }, [materialId, materiales])
+  // Al elegir otro material se sugiere su costo promedio actual (se puede cambiar)
+  function elegirMaterial(id: string) {
+    setMaterialId(id)
+    const mat = materiales.find((m) => m.id === id)
+    setCostoUnitario(mat && mat.costoPromedio > 0 ? mat.costoPromedio.toString() : "")
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -71,11 +68,11 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
     if (costoUnitario) formData.append("costoUnitario", costoUnitario)
 
     try {
-      await registrarEntrada(formData)
+      unwrap(await registrarEntrada(formData))
       router.push("/inventario")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al registrar la entrada")
+    } catch (err) {
+      setError(mensajeError(err, "Error al registrar la entrada"))
       setLoading(false)
     }
   }
@@ -92,22 +89,22 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
             Recepción de Materia Prima
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Ingreso de resinas vírgenes, molidos, masterbatch y tintas al almacén
           </p>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+      <Card className="border-line shadow-sm bg-card">
+        <CardHeader className="pb-3 border-b border-line">
+          <div className="flex items-center gap-2 text-accent">
+            <div className="p-1.5 rounded-lg bg-accent/10 text-accent border border-accent/30">
               <ArrowDownToLine className="h-4 w-4" />
             </div>
-            <CardTitle className="text-base font-semibold text-slate-900">
+            <CardTitle className="text-base font-semibold text-fg">
               Formulario de Entrada
             </CardTitle>
           </div>
@@ -116,14 +113,14 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Material Selector */}
             <div className="space-y-1.5">
-              <Label htmlFor="materialId" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="materialId" className="text-xs font-semibold text-subdued">
                 Material / Resina *
               </Label>
               <select
                 id="materialId"
                 value={materialId}
-                onChange={(e) => setMaterialId(e.target.value)}
-                className="w-full h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-emerald-500 focus:outline-none"
+                onChange={(e) => elegirMaterial(e.target.value)}
+                className="w-full h-11 rounded-lg border border-line bg-card px-3 text-sm focus:border-accent/60 focus:outline-none"
                 required
               >
                 {materiales.map((m) => (
@@ -133,17 +130,17 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
                 ))}
               </select>
               {selectedMaterial && (
-                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                <div className="text-[11px] text-subdued flex items-center gap-2">
                   <span>Categoría: <strong>{selectedMaterial.categoria}</strong></span>
                   <span>•</span>
-                  <span>Costo ref: <strong>Bs. {selectedMaterial.costoPromedio.toFixed(2)}</strong></span>
+                  <span>Costo ref: <strong>{formatBs(selectedMaterial.costoPromedio)}</strong></span>
                 </div>
               )}
             </div>
 
             {/* Turno Selector */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Turno de Recepción *
               </Label>
               <div className="grid grid-cols-3 gap-2">
@@ -153,10 +150,10 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
                     type="button"
                     onClick={() => setTurno(t)}
                     className={`h-10 rounded-lg text-xs font-semibold transition border ${
-                      turno === t
-                        ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
+ turno === t
+ ? "bg-brand text-on-brand border-brand shadow-xs"
+ : "bg-card text-subdued border-line hover:bg-elevated"
+ }`}
                   >
                     Turno {t === "MANANA" ? "Mañana" : t === "TARDE" ? "Tarde" : "Noche"}
                   </button>
@@ -166,7 +163,7 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
 
             {/* Cantidad Input + Presets */}
             <div className="space-y-2">
-              <Label htmlFor="cantidad" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="cantidad" className="text-xs font-semibold text-subdued">
                 Cantidad Recibida ({selectedMaterial?.unidad || "kg"}) *
               </Label>
               <div className="relative">
@@ -179,22 +176,22 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
                   value={cantidad}
                   onChange={(e) => setCantidad(e.target.value)}
                   required
-                  className="h-12 text-lg font-bold text-slate-900 pr-12 focus:border-emerald-500"
+                  className="h-12 text-lg font-bold text-fg pr-12 focus:border-accent/60"
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
                   {selectedMaterial?.unidad || "kg"}
                 </span>
               </div>
 
               {/* Quick Presets */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-slate-400">Presets rápidos:</span>
+                <span className="text-[11px] text-muted">Presets rápidos:</span>
                 {PRESET_KGS.map((kg) => (
                   <button
                     key={kg}
                     type="button"
                     onClick={() => setCantidad(kg.toString())}
-                    className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-semibold text-slate-700 border border-slate-200/80 transition"
+                    className="text-xs px-2.5 py-1 rounded-md bg-highlight hover:bg-accent/10 hover:text-accent font-semibold text-subdued border border-line transition"
                   >
                     +{kg} kg
                   </button>
@@ -205,7 +202,7 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
             {/* Provider and Batch */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="proveedor" className="text-xs font-semibold text-slate-700">
+                <Label htmlFor="proveedor" className="text-xs font-semibold text-subdued">
                   Proveedor
                 </Label>
                 <Input
@@ -221,7 +218,7 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
                       key={p}
                       type="button"
                       onClick={() => setProveedor(p)}
-                      className="text-[10px] text-slate-500 hover:text-emerald-700 underline"
+                      className="text-[10px] text-subdued hover:text-accent underline"
                     >
                       {p}
                     </button>
@@ -230,7 +227,7 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="lote" className="text-xs font-semibold text-slate-700">
+                <Label htmlFor="lote" className="text-xs font-semibold text-subdued">
                   Número de Lote / Guía
                 </Label>
                 <Input
@@ -245,8 +242,8 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
 
             {/* Costo Unitario */}
             <div className="space-y-1.5">
-              <Label htmlFor="costoUnitario" className="text-xs font-semibold text-slate-700">
-                Costo Unitario (Bs. / {selectedMaterial?.unidad || "kg"})
+              <Label htmlFor="costoUnitario" className="text-xs font-semibold text-subdued">
+                Costo Unitario (Bs / {selectedMaterial?.unidad || "kg"})
               </Label>
               <Input
                 id="costoUnitario"
@@ -258,13 +255,13 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
                 onChange={(e) => setCostoUnitario(e.target.value)}
                 className="h-10 text-sm"
               />
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-muted">
                 Si se ingresa, actualizará automáticamente el costo promedio del material.
               </p>
             </div>
 
             {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-center gap-2">
+              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -273,7 +270,7 @@ export function EntradaForm({ materiales }: { materiales: MaterialOption[] }) {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-sm transition gap-2"
+              className="w-full h-12 bg-brand hover:bg-brand-hover text-on-brand font-semibold text-sm shadow-sm transition gap-2"
             >
               {loading ? (
                 <span>Guardando en almacén...</span>

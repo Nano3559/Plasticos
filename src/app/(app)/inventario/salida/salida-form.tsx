@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useTurno } from "@/lib/use-turno"
+import { useState } from "react"
 import { registrarSalida } from "@/actions/inventario"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,19 +46,11 @@ export function SalidaForm({
   const router = useRouter()
   const [materialId, setMaterialId] = useState(materiales[0]?.id || "")
   const [cantidad, setCantidad] = useState("")
-  const [turno, setTurno] = useState<"MANANA" | "TARDE" | "NOCHE">("MANANA")
+  const [turno, setTurno] = useTurno()
   const [motivo, setMotivo] = useState(MOTIVOS_FRECUENTES[0])
   const [ordenId, setOrdenId] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-
-  // Shift auto-detection
-  useEffect(() => {
-    const hora = new Date().getHours()
-    if (hora >= 6 && hora < 14) setTurno("MANANA")
-    else if (hora >= 14 && hora < 22) setTurno("TARDE")
-    else setTurno("NOCHE")
-  }, [])
 
   const selectedMaterial = materiales.find((m) => m.id === materialId)
   const stockDisponible = selectedMaterial?.stock || 0
@@ -93,11 +87,11 @@ export function SalidaForm({
     if (ordenId) formData.append("ordenId", ordenId)
 
     try {
-      await registrarSalida(formData)
+      unwrap(await registrarSalida(formData))
       router.push("/inventario")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al registrar la salida")
+    } catch (err) {
+      setError(mensajeError(err, "Error al registrar la salida"))
       setLoading(false)
     }
   }
@@ -112,22 +106,22 @@ export function SalidaForm({
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
             Vale de Salida a Planta
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-subdued">
             Despacho de resinas, molido o tintas a las máquinas operativas
           </p>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm bg-white">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 text-sky-700">
-            <div className="p-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200">
+      <Card className="border-line shadow-sm bg-card">
+        <CardHeader className="pb-3 border-b border-line">
+          <div className="flex items-center gap-2 text-info">
+            <div className="p-1.5 rounded-lg bg-info/10 text-info border border-info/30">
               <ArrowUpFromLine className="h-4 w-4" />
             </div>
-            <CardTitle className="text-base font-semibold text-slate-900">
+            <CardTitle className="text-base font-semibold text-fg">
               Registrar Despacho
             </CardTitle>
           </div>
@@ -136,14 +130,14 @@ export function SalidaForm({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Material Selector with live stock badge */}
             <div className="space-y-1.5">
-              <Label htmlFor="materialId" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="materialId" className="text-xs font-semibold text-subdued">
                 Material a Despachar *
               </Label>
               <select
                 id="materialId"
                 value={materialId}
                 onChange={(e) => setMaterialId(e.target.value)}
-                className="w-full h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-sky-500 focus:outline-none"
+                className="w-full h-11 rounded-lg border border-line bg-card px-3 text-sm focus:border-info/60 focus:outline-none"
                 required
               >
                 {materiales.map((m) => (
@@ -156,10 +150,10 @@ export function SalidaForm({
               {selectedMaterial && (
                 <div
                   className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
-                    stockDisponible <= 0
-                      ? "bg-rose-50 border-rose-200 text-rose-800"
-                      : "bg-slate-50 border-slate-200 text-slate-700"
-                  }`}
+ stockDisponible <= 0
+ ? "bg-danger/10 border-danger/30 text-danger"
+ : "bg-elevated border-line text-subdued"
+ }`}
                 >
                   <span>Stock disponible en bodega:</span>
                   <span className="font-bold tabular-nums">
@@ -171,7 +165,7 @@ export function SalidaForm({
 
             {/* Turno */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
+              <Label className="text-xs font-semibold text-subdued">
                 Turno Operativo *
               </Label>
               <div className="grid grid-cols-3 gap-2">
@@ -181,10 +175,10 @@ export function SalidaForm({
                     type="button"
                     onClick={() => setTurno(t)}
                     className={`h-10 rounded-lg text-xs font-semibold transition border ${
-                      turno === t
-                        ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
+ turno === t
+ ? "bg-brand text-on-brand border-brand shadow-xs"
+ : "bg-card text-subdued border-line hover:bg-elevated"
+ }`}
                   >
                     Turno {t === "MANANA" ? "Mañana" : t === "TARDE" ? "Tarde" : "Noche"}
                   </button>
@@ -194,7 +188,7 @@ export function SalidaForm({
 
             {/* Cantidad Input */}
             <div className="space-y-2">
-              <Label htmlFor="cantidad" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="cantidad" className="text-xs font-semibold text-subdued">
                 Cantidad a Entregar ({selectedMaterial?.unidad || "kg"}) *
               </Label>
               <div className="relative">
@@ -208,18 +202,18 @@ export function SalidaForm({
                   onChange={(e) => setCantidad(e.target.value)}
                   required
                   className={`h-12 text-lg font-bold pr-12 ${
-                    excedeStock
-                      ? "border-rose-500 text-rose-600 focus:border-rose-500"
-                      : "text-slate-900 focus:border-sky-500"
-                  }`}
+ excedeStock
+ ? "border-danger/60 text-danger focus:border-danger/60"
+ : "text-fg focus:border-info/60"
+ }`}
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
                   {selectedMaterial?.unidad || "kg"}
                 </span>
               </div>
 
               {excedeStock && (
-                <div className="text-xs text-rose-600 flex items-center gap-1.5 font-medium">
+                <div className="text-xs text-danger flex items-center gap-1.5 font-medium">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>
                     La cantidad supera el stock en bodega ({stockDisponible.toFixed(2)} {selectedMaterial?.unidad}).
@@ -229,13 +223,13 @@ export function SalidaForm({
 
               {/* Quick presets that fit within stock */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-slate-400">Pre-establecidos:</span>
+                <span className="text-[11px] text-muted">Pre-establecidos:</span>
                 {[25, 50, 100, 200].map((kg) => (
                   <button
                     key={kg}
                     type="button"
                     onClick={() => setCantidad(kg.toString())}
-                    className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-sky-50 hover:text-sky-700 font-semibold text-slate-700 border border-slate-200/80 transition"
+                    className="text-xs px-2.5 py-1 rounded-md bg-highlight hover:bg-info/10 hover:text-info font-semibold text-subdued border border-line transition"
                   >
                     {kg} kg
                   </button>
@@ -244,7 +238,7 @@ export function SalidaForm({
                   <button
                     type="button"
                     onClick={() => setCantidad(stockDisponible.toString())}
-                    className="text-xs px-2.5 py-1 rounded-md bg-sky-50 text-sky-700 font-semibold border border-sky-200 hover:bg-sky-100 transition"
+                    className="text-xs px-2.5 py-1 rounded-md bg-info/10 text-info font-semibold border border-info/30 hover:bg-info/15 transition"
                   >
                     Todo el stock ({stockDisponible.toFixed(2)} kg)
                   </button>
@@ -254,7 +248,7 @@ export function SalidaForm({
 
             {/* Motivo / Destino */}
             <div className="space-y-1.5">
-              <Label htmlFor="motivo" className="text-xs font-semibold text-slate-700">
+              <Label htmlFor="motivo" className="text-xs font-semibold text-subdued">
                 Destino / Motivo de Salida *
               </Label>
               <Input
@@ -271,7 +265,7 @@ export function SalidaForm({
                     key={m}
                     type="button"
                     onClick={() => setMotivo(m)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+                    className="text-[10px] px-2 py-0.5 rounded bg-highlight hover:bg-highlight text-subdued transition"
                   >
                     {m}
                   </button>
@@ -281,15 +275,15 @@ export function SalidaForm({
 
             {/* Orden de Trabajo Vinculada */}
             <div className="space-y-1.5">
-              <Label htmlFor="ordenId" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-slate-400" />
+              <Label htmlFor="ordenId" className="text-xs font-semibold text-subdued flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-muted" />
                 Vincular a Orden de Trabajo (Opcional)
               </Label>
               <select
                 id="ordenId"
                 value={ordenId}
                 onChange={(e) => setOrdenId(e.target.value)}
-                className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:border-sky-500 focus:outline-none"
+                className="w-full h-10 rounded-lg border border-line bg-card px-3 text-sm focus:border-info/60 focus:outline-none"
               >
                 <option value="">Sin vincular a OT específica</option>
                 {ordenes.map((ot) => (
@@ -301,7 +295,7 @@ export function SalidaForm({
             </div>
 
             {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-center gap-2">
+              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -310,7 +304,7 @@ export function SalidaForm({
             <Button
               type="submit"
               disabled={loading || excedeStock}
-              className="w-full h-12 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm shadow-sm transition gap-2"
+              className="w-full h-12 bg-brand hover:bg-brand-hover text-on-brand font-semibold text-sm shadow-sm transition gap-2"
             >
               {loading ? (
                 <span>Despachando...</span>

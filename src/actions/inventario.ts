@@ -1,41 +1,49 @@
 "use server"
 
-import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { ajusteSchema, entradaSchema, salidaSchema, materialSchema } from "@/lib/schemas/inventario"
 import { revalidatePath } from "next/cache"
-import { TipoMovimiento, CategoriaMaterial } from "@prisma/client"
+import { fail } from "@/lib/action-result"
+import { TipoMovimiento, CategoriaMaterial, Prisma } from "@prisma/client"
 
-async function getStock(materialId: string) {
-  const movimientos = await prisma.movimientoInventario.findMany({
+type Tx = Prisma.TransactionClient
+
+/** Stock = ENTRADA − SALIDA ± AJUSTE, calculado en la base de datos. */
+async function getStock(db: Tx | typeof prisma, materialId: string) {
+  const grupos = await db.movimientoInventario.groupBy({
+    by: ["tipo"],
     where: { materialId },
-    select: { tipo: true, cantidad: true },
+    _sum: { cantidad: true },
   })
-
   let stock = 0
-  for (const m of movimientos) {
-    const cant = Number(m.cantidad)
-    if (m.tipo === "ENTRADA") stock += cant
-    if (m.tipo === "SALIDA") stock -= cant
-    if (m.tipo === "AJUSTE") stock += cant
+  for (const g of grupos) {
+    const cant = Number(g._sum.cantidad ?? 0)
+    if (g.tipo === "SALIDA") stock -= cant
+    else stock += cant // ENTRADA suma; AJUSTE ya trae su signo
   }
   return stock
 }
 
-export async function crearMaterial(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+/** Serializa los movimientos de un mismo material para que dos salidas simultáneas no dejen stock negativo. */
+async function bloquearMaterial(tx: Tx, materialId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${materialId}))`
+}
 
-  const rol = (session.user as any).rol
+export async function crearMaterial(formData: FormData) {
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
+
+  const rol = user.rol
   if (rol !== "ALMACEN" && rol !== "ADMIN" && rol !== "GERENCIA") {
-    throw new Error("Sin permisos para registrar materiales")
+    return fail("Sin permisos para registrar materiales")
   }
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = materialSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   const { nombre, categoria, unidad, stockMinimo, costoPromedio } = parsed.data
@@ -55,116 +63,149 @@ export async function crearMaterial(formData: FormData) {
 }
 
 export async function registrarEntrada(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
+  const rol = user.rol
   if (rol !== "ALMACEN" && rol !== "ADMIN" && rol !== "GERENCIA") {
-    throw new Error("Sin permisos")
+    return fail("Sin permisos")
   }
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = entradaSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   const { materialId, cantidad, turno, proveedor, lote, costoUnitario } = parsed.data
 
-  await prisma.movimientoInventario.create({
-    data: {
-      materialId,
-      tipo: TipoMovimiento.ENTRADA,
-      cantidad,
-      turno,
-      proveedor: proveedor || null,
-      lote: lote || null,
-      costoUnitario: costoUnitario || null,
-      userId: (session.user as any).id,
-    },
-  })
+  const userId = user.id
 
-  // Actualizar costo promedio simple si hay costo unitario
-  if (costoUnitario) {
-    const material = await prisma.material.findUnique({ where: { id: materialId } })
-    if (material) {
-      await prisma.material.update({
-        where: { id: materialId },
-        data: { costoPromedio: costoUnitario },
-      })
+  await prisma.$transaction(async (tx) => {
+    await bloquearMaterial(tx, materialId)
+
+    // Costo promedio ponderado: (stock × costo actual + kg nuevos × costo nuevo) ÷ stock total
+    if (costoUnitario) {
+      const material = await tx.material.findUnique({ where: { id: materialId } })
+      if (material) {
+        const stockPrevio = Math.max(0, await getStock(tx, materialId))
+        const costoPrevio = Number(material.costoPromedio)
+        const totalKg = stockPrevio + cantidad
+        const nuevoPromedio =
+          stockPrevio > 0 && costoPrevio > 0
+            ? (stockPrevio * costoPrevio + cantidad * costoUnitario) / totalKg
+            : costoUnitario
+        await tx.material.update({
+          where: { id: materialId },
+          data: { costoPromedio: nuevoPromedio },
+        })
+      }
     }
-  }
+
+    await tx.movimientoInventario.create({
+      data: {
+        materialId,
+        tipo: TipoMovimiento.ENTRADA,
+        cantidad,
+        turno,
+        proveedor: proveedor || null,
+        lote: lote || null,
+        costoUnitario: costoUnitario || null,
+        userId,
+      },
+    })
+  })
 
   revalidatePath("/inventario")
 }
 
 export async function registrarSalida(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
+  const rol = user.rol
   if (rol !== "ALMACEN" && rol !== "ADMIN" && rol !== "GERENCIA") {
-    throw new Error("Sin permisos")
+    return fail("Sin permisos")
   }
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = salidaSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   const { materialId, cantidad, turno, motivo, ordenId } = parsed.data
 
-  const stockActual = await getStock(materialId)
-  if (stockActual < cantidad) {
-    throw new Error(`Stock insuficiente. Disponible: ${stockActual.toFixed(2)} kg`)
-  }
+  const userId = user.id
 
-  await prisma.movimientoInventario.create({
-    data: {
-      materialId,
-      tipo: TipoMovimiento.SALIDA,
-      cantidad,
-      turno,
-      motivo,
-      ordenId: ordenId || null,
-      userId: (session.user as any).id,
-    },
+  const resultado = await prisma.$transaction(async (tx) => {
+    await bloquearMaterial(tx, materialId)
+    const stockActual = await getStock(tx, materialId)
+    if (stockActual < cantidad) {
+      return fail(`Stock insuficiente. Disponible: ${stockActual.toFixed(2)} kg`)
+    }
+    // El vale guarda el costo promedio vigente: el costo de la OT no cambia si después sube el precio
+    const material = await tx.material.findUnique({ where: { id: materialId }, select: { costoPromedio: true } })
+    await tx.movimientoInventario.create({
+      data: {
+        materialId,
+        tipo: TipoMovimiento.SALIDA,
+        cantidad,
+        costoUnitario: material?.costoPromedio ?? null,
+        turno,
+        motivo,
+        ordenId: ordenId || null,
+        userId,
+      },
+    })
   })
+  if (resultado) return resultado
 
   revalidatePath("/inventario")
 }
 
 export async function registrarAjuste(formData: FormData) {
-  const session = await auth()
-  if (!session?.user) throw new Error("No autorizado")
+  const user = await getSessionUser()
+  if (!user) return fail("No autorizado")
 
-  const rol = (session.user as any).rol
+  const rol = user.rol
   if (rol !== "ALMACEN" && rol !== "ADMIN" && rol !== "GERENCIA") {
-    throw new Error("Sin permisos")
+    return fail("Sin permisos")
   }
 
   const raw = Object.fromEntries(formData.entries())
   const parsed = ajusteSchema.safeParse(raw)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0].message)
+    return fail(parsed.error.issues[0].message)
   }
 
   const { materialId, cantidad, turno, motivo } = parsed.data
 
-  await prisma.movimientoInventario.create({
-    data: {
-      materialId,
-      tipo: TipoMovimiento.AJUSTE,
-      cantidad,
-      turno,
-      motivo,
-      userId: (session.user as any).id,
-    },
+  const userId = user.id
+
+  const resultado = await prisma.$transaction(async (tx) => {
+    await bloquearMaterial(tx, materialId)
+    if (cantidad < 0) {
+      const stockActual = await getStock(tx, materialId)
+      if (stockActual + cantidad < 0) {
+        return fail(`El ajuste dejaría el stock en negativo. Disponible: ${stockActual.toFixed(2)} kg`)
+      }
+    }
+    await tx.movimientoInventario.create({
+      data: {
+        materialId,
+        tipo: TipoMovimiento.AJUSTE,
+        cantidad,
+        turno,
+        motivo,
+        userId,
+      },
+    })
   })
+  if (resultado) return resultado
 
   revalidatePath("/inventario")
 }

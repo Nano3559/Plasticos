@@ -1,20 +1,10 @@
+import { EstadoOrden } from "@/components/ui/estado-orden"
+import { formatBs } from "@/lib/formato"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  ArrowLeft,
-  Factory,
-  Layers,
-  Printer,
-  Scissors,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  Calendar,
-  User,
-  PlusCircle,
-} from "lucide-react"
+import { ArrowLeft, Layers, Printer, Scissors, Clock, Sparkles, PlusCircle } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { cambiarEstadoOrden } from "@/actions/produccion"
@@ -22,7 +12,7 @@ import { cambiarEstadoOrden } from "@/actions/produccion"
 export default async function DetalleOrdenPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const session = await auth()
-  const rol = (session?.user as any)?.rol
+  const rol = session?.user?.rol
 
   const ot = await prisma.ordenTrabajo.findUnique({
     where: { id },
@@ -60,17 +50,7 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
               <h1 className="text-xl font-bold tracking-tight">
                 OT #{ot.numero} — {ot.producto}
               </h1>
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  ot.estado === "ABIERTA"
-                    ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                    : ot.estado === "TERMINADA"
-                    ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {ot.estado}
-              </span>
+              <EstadoOrden estado={ot.estado} />
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Cliente: <span className="font-semibold text-foreground">{ot.cliente.nombre}</span> • Registrada el{" "}
@@ -112,7 +92,7 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
               {kgPedidos.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Precio: ${Number(ot.precioUnitario).toFixed(2)}/kg
+              Precio: {formatBs(Number(ot.precioUnitario))}/kg
             </p>
           </CardContent>
         </Card>
@@ -120,10 +100,10 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
         <Card className="rounded-xl border shadow-xs">
           <CardContent className="p-4 space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Fabricados (Buenos)</p>
-            <p className="text-2xl font-bold tracking-tight text-emerald-600">
+            <p className="text-2xl font-bold tracking-tight text-accent">
               {kgBuenos.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
             </p>
-            <p className="text-[11px] font-semibold text-emerald-700">
+            <p className="text-[11px] font-semibold text-accent">
               {porcentaje}% completado
             </p>
           </CardContent>
@@ -144,7 +124,7 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
         <Card className="rounded-xl border shadow-xs">
           <CardContent className="p-4 space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Merma / Desperdicio</p>
-            <p className="text-2xl font-bold tracking-tight text-amber-600">
+            <p className="text-2xl font-bold tracking-tight text-warn">
               {kgMerma.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
             </p>
             <p className="text-[11px] text-muted-foreground">
@@ -163,11 +143,11 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
               {kgBuenos.toFixed(1)} / {kgPedidos.toFixed(1)} kg ({porcentaje}%)
             </span>
           </div>
-          <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-elevated rounded-full h-3 overflow-hidden">
             <div
               className={`h-3 rounded-full transition-all duration-300 ${
-                porcentaje >= 100 ? "bg-emerald-500" : "bg-primary"
-              }`}
+ porcentaje >= 100 ? "bg-accent" : "bg-info"
+ }`}
               style={{ width: `${porcentaje}%` }}
             />
           </div>
@@ -181,18 +161,18 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
         </CardHeader>
         <CardContent className="p-4 pt-1">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 bg-muted/40 rounded-xl">
+            <div className="p-3 bg-black/[0.03] rounded-xl">
               <span className="text-muted-foreground block text-[11px]">Producto</span>
               <span className="font-semibold text-foreground text-sm">{ot.producto}</span>
             </div>
-            <div className="p-3 bg-muted/40 rounded-xl">
+            <div className="p-3 bg-black/[0.03] rounded-xl">
               <span className="text-muted-foreground block text-[11px]">Medida / Espesor</span>
               <span className="font-semibold text-foreground text-sm">{ot.medida || "Estándar"}</span>
             </div>
-            <div className="p-3 bg-muted/40 rounded-xl">
+            <div className="p-3 bg-black/[0.03] rounded-xl">
               <span className="text-muted-foreground block text-[11px]">Fórmula / Mezcla Nota</span>
               <span className="font-semibold text-foreground text-sm flex items-center gap-1">
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                <Sparkles className="h-3.5 w-3.5 text-warn" />
                 {ot.mezclaNota || "Sin nota de mezcla"}
               </span>
             </div>
@@ -227,12 +207,12 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
                       <div className="flex items-center gap-2">
                         <span
                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 ${
-                            r.area === "EXTRUSION"
-                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                              : r.area === "IMPRESION"
-                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                          }`}
+ r.area === "EXTRUSION"
+ ? "bg-warn/10 text-warn"
+ : r.area === "IMPRESION"
+ ? "bg-info/10 text-info dark:text-info"
+ : "bg-accent/10 text-accent dark:text-accent"
+ }`}
                         >
                           {r.area === "EXTRUSION" ? (
                             <Layers className="h-3 w-3" />
@@ -268,12 +248,12 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
                         <span className="font-semibold">{entrada.toFixed(1)} kg</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-emerald-600 block">Buenos</span>
-                        <span className="font-bold text-emerald-600">{buenos.toFixed(1)} kg</span>
+                        <span className="text-[10px] text-accent block">Buenos</span>
+                        <span className="font-bold text-accent">{buenos.toFixed(1)} kg</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-amber-600 block">Merma</span>
-                        <span className="font-semibold text-amber-600">{merma.toFixed(1)} kg</span>
+                        <span className="text-[10px] text-warn block">Merma</span>
+                        <span className="font-semibold text-warn">{merma.toFixed(1)} kg</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-muted-foreground block">Rend.</span>

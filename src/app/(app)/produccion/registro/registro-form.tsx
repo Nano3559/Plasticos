@@ -1,7 +1,9 @@
 "use client"
 
+import { useTurno } from "@/lib/use-turno"
 import { useState, useMemo } from "react"
 import { registrarProduccion } from "@/actions/produccion"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,12 +37,6 @@ interface OrdenInfo {
   clienteNombre: string
 }
 
-function detectarTurno(): "MANANA" | "TARDE" | "NOCHE" {
-  const hour = new Date().getHours()
-  if (hour >= 6 && hour < 14) return "MANANA"
-  if (hour >= 14 && hour < 22) return "TARDE"
-  return "NOCHE"
-}
 
 export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
   const router = useRouter()
@@ -50,7 +46,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
   // Form State
   const [selectedOrdenId, setSelectedOrdenId] = useState<string>(ordenes[0]?.id || "")
   const [area, setArea] = useState<"EXTRUSION" | "IMPRESION" | "CONFECCION">("EXTRUSION")
-  const [turno, setTurno] = useState<"MANANA" | "TARDE" | "NOCHE">(detectarTurno())
+  const [turno, setTurno] = useTurno()
 
   // Numeric weights
   const [kgEntrada, setKgEntrada] = useState<string>("")
@@ -121,11 +117,11 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
     if (horasMaquina) formData.append("horasMaquina", horasMaquina)
 
     try {
-      await registrarProduccion(formData)
+      unwrap(await registrarProduccion(formData))
       router.push("/produccion")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al registrar producción")
+    } catch (err) {
+      setError(mensajeError(err, "Error al registrar producción"))
       setLoading(false)
     }
   }
@@ -172,7 +168,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
 
             {/* Ficha rápida de la OT seleccionada (info-card-patterns) */}
             {selectedOrden && (
-              <div className="rounded-lg bg-muted/60 border p-3 text-xs space-y-2">
+              <div className="rounded-lg bg-black/[0.03] border p-3 text-xs space-y-2">
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="font-semibold text-foreground">{selectedOrden.clienteNombre}</span>
@@ -189,7 +185,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 </div>
 
                 {selectedOrden.mezclaNota && (
-                  <div className="pt-1.5 border-t border-border/60 flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                  <div className="pt-1.5 border-t border-border/60 flex items-center gap-1.5 text-warn">
                     <Sparkles className="h-3 w-3 shrink-0" />
                     <span className="text-[11px] font-medium">Mezcla: {selectedOrden.mezclaNota}</span>
                   </div>
@@ -210,10 +206,10 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setArea("EXTRUSION")}
                 className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  area === "EXTRUSION"
-                    ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400 shadow-xs ring-2 ring-amber-500/20"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ area === "EXTRUSION"
+ ? "border-warn/60 bg-warn/10 text-warn shadow-xs ring-2 ring-warn/20"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
                 <Layers className="h-5 w-5" />
                 <span>Extrusión</span>
@@ -223,10 +219,10 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setArea("IMPRESION")}
                 className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  area === "IMPRESION"
-                    ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400 shadow-xs ring-2 ring-blue-500/20"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ area === "IMPRESION"
+ ? "border-info/60 bg-info/10 text-info dark:text-info shadow-xs ring-2 ring-info/20"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
                 <Printer className="h-5 w-5" />
                 <span>Impresión</span>
@@ -236,10 +232,10 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setArea("CONFECCION")}
                 className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  area === "CONFECCION"
-                    ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shadow-xs ring-2 ring-emerald-500/20"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ area === "CONFECCION"
+ ? "border-accent/60 bg-accent/10 text-accent dark:text-accent shadow-xs ring-2 ring-accent/20"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
                 <Scissors className="h-5 w-5" />
                 <span>Confección</span>
@@ -262,12 +258,12 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setTurno("MANANA")}
                 className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
-                  turno === "MANANA"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ turno === "MANANA"
+ ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
-                <Sun className="h-4 w-4 text-amber-500" />
+                <Sun className="h-4 w-4 text-warn" />
                 <span>Mañana</span>
               </button>
 
@@ -275,12 +271,12 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setTurno("TARDE")}
                 className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
-                  turno === "TARDE"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ turno === "TARDE"
+ ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
-                <Sunset className="h-4 w-4 text-orange-500" />
+                <Sunset className="h-4 w-4 text-warn" />
                 <span>Tarde</span>
               </button>
 
@@ -288,12 +284,12 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 type="button"
                 onClick={() => setTurno("NOCHE")}
                 className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
-                  turno === "NOCHE"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
-                    : "border-border hover:bg-muted/50 text-muted-foreground"
-                }`}
+ turno === "NOCHE"
+ ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
+ : "border-border hover:bg-black/[0.03] text-muted-foreground"
+ }`}
               >
-                <Moon className="h-4 w-4 text-indigo-400" />
+                <Moon className="h-4 w-4 text-info" />
                 <span>Noche</span>
               </button>
             </div>
@@ -302,7 +298,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
 
         {/* Paso 4: Balanza y Pesajes en Vivo (status-visualization-patterns + form-patterns) */}
         <Card className="rounded-xl border shadow-xs overflow-hidden">
-          <CardHeader className="p-4 pb-3 bg-muted/30 border-b">
+          <CardHeader className="p-4 pb-3 bg-black/[0.03] border-b">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Scale className="h-4 w-4 text-primary" />
@@ -343,7 +339,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
               {/* Campo 2: Kilos Buenos */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="kgBuenos" className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  <Label htmlFor="kgBuenos" className="text-xs font-semibold text-accent dark:text-accent">
                     Kg Buenos *
                   </Label>
                   {balance.entrada > 0 && balance.diff !== 0 && (
@@ -367,7 +363,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                     placeholder="0.00"
                     value={kgBuenos}
                     onChange={(e) => setKgBuenos(e.target.value)}
-                    className="h-11 font-semibold pr-10 rounded-xl border-emerald-500/40 focus:border-emerald-500"
+                    className="h-11 font-semibold pr-10 rounded-xl border-accent/40 focus:border-accent/60"
                     required
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
@@ -378,7 +374,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
 
               {/* Campo 3: Kilos Merma */}
               <div className="space-y-1.5">
-                <Label htmlFor="kgMerma" className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                <Label htmlFor="kgMerma" className="text-xs font-semibold text-warn">
                   Kg Merma (Scrap) *
                 </Label>
                 <div className="relative">
@@ -391,7 +387,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                     placeholder="0.00"
                     value={kgMerma}
                     onChange={(e) => setKgMerma(e.target.value)}
-                    className="h-11 font-semibold pr-10 rounded-xl border-amber-500/40 focus:border-amber-500"
+                    className="h-11 font-semibold pr-10 rounded-xl border-warn/40 focus:border-warn/60"
                     required
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
@@ -402,7 +398,7 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
 
               {/* Campo 4: Kilos Rechazados */}
               <div className="space-y-1.5">
-                <Label htmlFor="kgRechazado" className="text-xs font-semibold text-rose-700 dark:text-rose-400">
+                <Label htmlFor="kgRechazado" className="text-xs font-semibold text-danger dark:text-danger">
                   Kg Rechazado
                 </Label>
                 <div className="relative">
@@ -427,19 +423,19 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
             {/* Visualizador de Balance en Vivo (Status Visualization Pattern) */}
             <div
               className={`rounded-xl border p-3 transition-colors ${
-                balance.entrada === 0
-                  ? "bg-muted/40 border-border text-muted-foreground"
-                  : balance.esValido
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
-                  : "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
-              }`}
+ balance.entrada === 0
+ ? "bg-black/[0.03] border-border text-muted-foreground"
+ : balance.esValido
+ ? "bg-accent/10 border-accent/30 text-accent dark:text-accent"
+ : "bg-warn/10 border-warn/30 text-warn"
+ }`}
             >
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5">
                   {balance.esValido ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <CheckCircle2 className="h-4 w-4 text-accent dark:text-accent" />
                   ) : (
-                    <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <AlertCircle className="h-4 w-4 text-warn" />
                   )}
                   <span className="font-semibold">
                     {balance.entrada === 0
@@ -447,8 +443,8 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                       : balance.esValido
                       ? "Balanza Cuadrada al 100%"
                       : `Descuadre de ${Math.abs(balance.diff).toFixed(2)} kg (${
-                          balance.diff > 0 ? "Falta asignar" : "Excede la entrada"
-                        })`}
+ balance.diff > 0 ? "Falta asignar" : "Excede la entrada"
+ })`}
                   </span>
                 </div>
 
@@ -464,12 +460,12 @@ export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
                 <div className="mt-2.5 space-y-1">
                   <div className="w-full bg-muted-foreground/20 rounded-full h-2 overflow-hidden flex">
                     <div
-                      className="bg-emerald-500 h-full transition-all duration-200"
+                      className="bg-accent h-full transition-all duration-200"
                       style={{ width: `${Math.min(100, balance.rendimiento)}%` }}
                       title={`Buenos: ${balance.rendimiento}%`}
                     />
                     <div
-                      className="bg-amber-500 h-full transition-all duration-200"
+                      className="bg-warn h-full transition-all duration-200"
                       style={{ width: `${Math.min(100 - balance.rendimiento, balance.mermaPorc)}%` }}
                       title={`Merma: ${balance.mermaPorc}%`}
                     />

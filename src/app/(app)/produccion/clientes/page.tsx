@@ -37,7 +37,7 @@ export default async function ClientesPage() {
 
       {/* Lista de Clientes (list-page-patterns) */}
       <Card className="rounded-xl border shadow-xs overflow-hidden">
-        <CardHeader className="p-4 pb-3 bg-muted/30 border-b">
+        <CardHeader className="p-4 pb-3 bg-black/[0.03] border-b">
           <CardTitle className="text-sm font-semibold">Clientes Activos</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1">
@@ -52,7 +52,7 @@ export default async function ClientesPage() {
                 <Link
                   key={c.id}
                   href={`/cobranzas/cliente/${c.id}`}
-                  className="py-3.5 flex items-center justify-between hover:bg-muted/50 -mx-4 px-4 transition-colors group"
+                  className="py-3.5 flex items-center justify-between hover:bg-black/[0.03] -mx-4 px-4 transition-colors group"
                 >
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">

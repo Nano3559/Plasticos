@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { crearCliente } from "@/actions/produccion"
+import { unwrap, mensajeError } from "@/lib/action-result"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,11 +28,11 @@ export default function NuevoClientePage() {
     formData.set("diasCredito", diasCredito.toString())
 
     try {
-      await crearCliente(formData)
+      unwrap(await crearCliente(formData))
       router.push("/produccion/clientes")
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || "Error al crear cliente")
+    } catch (err) {
+      setError(mensajeError(err, "Error al crear cliente"))
       setLoading(false)
     }
   }
@@ -52,7 +53,7 @@ export default function NuevoClientePage() {
       </div>
 
       <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2 bg-muted/30 border-b">
+        <CardHeader className="p-4 pb-2 bg-black/[0.03] border-b">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <UserPlus className="h-4 w-4 text-primary" />
             <span>Información Comercial</span>
@@ -123,10 +124,10 @@ export default function NuevoClientePage() {
                     type="button"
                     onClick={() => setDiasCredito(dias)}
                     className={`h-10 rounded-lg border text-xs font-semibold transition-all ${
-                      diasCredito === dias
-                        ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/30"
-                        : "border-border hover:bg-muted text-muted-foreground"
-                    }`}
+ diasCredito === dias
+ ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/30"
+ : "border-border hover:bg-elevated text-muted-foreground"
+ }`}
                   >
                     {dias === 0 ? "Contado" : `${dias}d`}
                   </button>
