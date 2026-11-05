@@ -1,36 +1,27 @@
 import { prisma } from "@/lib/prisma"
-import { stockPorMaterial } from "@/lib/stock"
+import { materialesParaFormulario, textosUsados } from "@/lib/materiales-form"
 import { SalidaForm } from "./salida-form"
 
 export const dynamic = "force-dynamic"
 
-export default async function SalidaPage() {
-  const materiales = await prisma.material.findMany({
-    orderBy: { nombre: "asc" },
-  })
-
-  const stock = await stockPorMaterial()
-  const materialesConStock = materiales.map((m) => ({
-      id: m.id,
-      nombre: m.nombre,
-      categoria: m.categoria,
-      unidad: m.unidad,
-      stock: stock.get(m.id) ?? 0,
-  }))
-
-  const ordenes = await prisma.ordenTrabajo.findMany({
-    where: { estado: "ABIERTA" },
-    include: { cliente: true },
-    orderBy: { numero: "desc" },
-    take: 20,
-  })
-
-  const serializedOrdenes = ordenes.map((ot) => ({
-    id: ot.id,
-    numero: ot.numero,
-    producto: ot.producto,
-    clienteNombre: ot.cliente.nombre,
-  }))
-
-  return <SalidaForm materiales={materialesConStock} ordenes={serializedOrdenes} />
+export default async function SalidaPage({ searchParams }: { searchParams: Promise<{ material?: string; ot?: string }> }) {
+  const { material, ot } = await searchParams
+  const [materiales, motivos, ordenes] = await Promise.all([
+    materialesParaFormulario(),
+    textosUsados("motivo", "SALIDA", 8),
+    prisma.ordenTrabajo.findMany({
+      where: { estado: "ABIERTA" },
+      orderBy: { numero: "desc" },
+      select: { id: true, numero: true, refExterna: true, producto: true, cliente: { select: { nombre: true } } },
+    }),
+  ])
+  return (
+    <SalidaForm
+      materiales={materiales}
+      motivosUsados={motivos}
+      ordenes={ordenes.map((o) => ({ id: o.id, etiqueta: `OT ${o.refExterna ?? `#${o.numero}`} · ${o.producto} · ${o.cliente.nombre}` }))}
+      materialInicial={materiales.some((m) => m.id === material) ? material : undefined}
+      ordenInicial={ordenes.some((o) => o.id === ot) ? ot : undefined}
+    />
+  )
 }

@@ -1,300 +1,133 @@
-import { EstadoOrden } from "@/components/ui/estado-orden"
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import {
-  Plus,
-  FileText,
-  Users,
-  ClipboardList,
-  Factory,
-  Layers,
-  Printer,
-  Scissors,
-  TrendingUp,
-  ChevronRight,
-  CheckCircle2,
-  Clock,
-} from "lucide-react"
+import { Plus } from "lucide-react"
+import { getSessionUser } from "@/lib/session"
+import { prisma } from "@/lib/prisma"
+import { kgBuenosFinales } from "@/lib/costos"
+import { formatKg, formatNumero } from "@/lib/formato"
+import { haceDias } from "@/lib/rechazos"
+import { AREA_NOMBRE } from "@/lib/etiquetas"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Cifras } from "@/components/ui/cifras"
+import { Encabezado } from "@/components/ui/encabezado"
+import { Seccion } from "@/components/ui/seccion"
+import { Vacio } from "@/components/ui/mensaje"
+import { FilaOrden } from "@/components/produccion/fila-orden"
+
+export const dynamic = "force-dynamic"
+
+const AREAS = ["EXTRUSION", "IMPRESION", "CONFECCION"] as const
+const DIAS = 30
 
 export default async function ProduccionPage() {
-  const session = await auth()
-  const rol = session?.user?.rol
+  const user = await getSessionUser()
+  const gestiona = user?.rol === "ADMIN" || user?.rol === "GERENCIA"
 
-  // Consultas en paralelo
-  const [ordenes, totalAbiertas, registrosRecientes, totalClientes] = await Promise.all([
+  const [enCurso, registros, totalClientes] = await Promise.all([
     prisma.ordenTrabajo.findMany({
-      take: 8,
+      where: { estado: "ABIERTA" },
       orderBy: { fechaIngreso: "desc" },
-      include: {
-        cliente: { select: { nombre: true } },
-        registros: { select: { area: true, kgBuenos: true, kgMerma: true } },
-      },
+      include: { cliente: { select: { nombre: true } }, registros: { select: { area: true, kgBuenos: true } } },
     }),
-    prisma.ordenTrabajo.count({ where: { estado: "ABIERTA" } }),
     prisma.registroProduccion.findMany({
-      take: 20,
-      orderBy: { createdAt: "desc" },
-      select: { area: true, kgBuenos: true, kgMerma: true, kgEntrada: true },
+      where: { createdAt: { gte: haceDias(DIAS) } },
+      select: { ordenId: true, area: true, kgEntrada: true, kgBuenos: true, kgMerma: true, kgRechazado: true },
     }),
-    prisma.cliente.count(),
+    gestiona ? prisma.cliente.count() : Promise.resolve(0),
   ])
 
-  // Métricas agregadas de producción
-  const kgEntradaTotal = registrosRecientes.reduce((acc, r) => acc + Number(r.kgEntrada), 0)
-  const kgBuenosTotal = registrosRecientes.reduce((acc, r) => acc + Number(r.kgBuenos), 0)
-  const kgMermaTotal = registrosRecientes.reduce((acc, r) => acc + Number(r.kgMerma), 0)
-  const rendimientoPromedio = kgEntradaTotal > 0 ? Math.round((kgBuenosTotal / kgEntradaTotal) * 100) : 0
+  // Producto terminado = kg buenos del último proceso de cada orden
+  const porOrden = new Map<string, typeof registros>()
+  for (const r of registros) porOrden.set(r.ordenId, [...(porOrden.get(r.ordenId) ?? []), r])
+  const terminado = [...porOrden.values()].reduce((s, regs) => s + kgBuenosFinales(regs), 0)
+  const merma = registros.reduce((s, r) => s + Number(r.kgMerma) + Number(r.kgRechazado), 0)
 
-  // Desglose por Área
-  const porArea = {
-    EXTRUSION: { buenos: 0, merma: 0 },
-    IMPRESION: { buenos: 0, merma: 0 },
-    CONFECCION: { buenos: 0, merma: 0 },
-  }
-  for (const r of registrosRecientes) {
-    if (porArea[r.area]) {
-      porArea[r.area].buenos += Number(r.kgBuenos)
-      porArea[r.area].merma += Number(r.kgMerma)
-    }
-  }
+  const areas = AREAS.map((a) => {
+    const regs = registros.filter((r) => r.area === a)
+    const entrada = regs.reduce((s, r) => s + Number(r.kgEntrada), 0)
+    const buenos = regs.reduce((s, r) => s + Number(r.kgBuenos), 0)
+    const perdida = regs.reduce((s, r) => s + Number(r.kgMerma) + Number(r.kgRechazado), 0)
+    return { area: a, entrada, buenos, perdida, rend: entrada > 0 ? (buenos / entrada) * 100 : null, pesajes: regs.length }
+  })
+
+  const accesos = [
+    { href: "/produccion/registro", texto: "Registrar producción" },
+    gestiona && { href: "/produccion/ordenes/nueva", texto: "Nueva orden" },
+    gestiona && { href: "/produccion/clientes", texto: `Clientes (${totalClientes})` },
+  ].filter(Boolean) as { href: string; texto: string }[]
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Módulo de Producción</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Gestión de órdenes de trabajo, seguimiento por área y pesajes de turno
-          </p>
-        </div>
-
-        {(rol === "ADMIN" || rol === "GERENCIA") && (
-          <div className="flex items-center gap-2">
-            <Link href="/produccion/ordenes/nueva">
-              <Button size="sm" className="gap-1.5 h-9 rounded-xl font-semibold shadow-xs">
-                <Plus className="h-4 w-4" /> Nueva OT
-              </Button>
+    <div className="space-y-10">
+      <Encabezado
+        titulo="Producción"
+        descripcion="Órdenes de trabajo, pesajes por área y avance de cada pedido."
+        acciones={
+          <Button asChild size="sm">
+            <Link href="/produccion/registro">
+              <Plus /> Registrar producción
             </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Acciones Rápidas Ergonómicas (mobile-responsive-ux) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        {(rol === "OPERADOR" || rol === "ADMIN" || rol === "GERENCIA") && (
-          <Link href="/produccion/registro" className="block">
-            <Button
-              variant="outline"
-              className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-accent/50 hover:bg-accent/5 transition-all shadow-xs"
-            >
-              <ClipboardList className="h-5 w-5 text-accent" />
-              <span className="text-xs font-semibold">Registrar Turno</span>
-            </Button>
-          </Link>
-        )}
-
-        <Link href="/produccion/ordenes" className="block">
-          <Button
-            variant="outline"
-            className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-primary/50 hover:bg-primary/5 transition-all shadow-xs"
-          >
-            <FileText className="h-5 w-5 text-info" />
-            <span className="text-xs font-semibold">Ver Órdenes</span>
           </Button>
-        </Link>
-
-        {(rol === "ADMIN" || rol === "GERENCIA") && (
-          <>
-            <Link href="/produccion/ordenes/nueva" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-primary/50 hover:bg-primary/5 transition-all shadow-xs"
-              >
-                <Plus className="h-5 w-5 text-info" />
-                <span className="text-xs font-semibold">Crear Orden</span>
-              </Button>
+        }
+      >
+        <div className="flex flex-wrap gap-x-4 gap-y-1" role="group" aria-label="Accesos">
+          {accesos.slice(1).map((a) => (
+            <Link key={a.href} href={a.href} className="inline-flex h-10 items-center text-[14px] font-medium text-brand-ink hover:underline">
+              {a.texto}
             </Link>
-
-            <Link href="/produccion/clientes" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-16 flex flex-col items-center justify-center gap-1 rounded-xl border hover:border-primary/50 hover:bg-primary/5 transition-all shadow-xs"
-              >
-                <Users className="h-5 w-5 text-warn" />
-                <span className="text-xs font-semibold">Clientes ({totalClientes})</span>
-              </Button>
-            </Link>
-          </>
-        )}
-      </div>
-
-      {/* Tarjetas KPI de Producción (info-card-patterns) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">OTs Abiertas</p>
-              <p className="text-2xl font-bold tracking-tight">{totalAbiertas}</p>
-              <p className="text-[11px] text-muted-foreground">En fabricación</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-info/10 text-info flex items-center justify-center shrink-0">
-              <FileText className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Kilos Buenos</p>
-              <p className="text-2xl font-bold tracking-tight">
-                {kgBuenosTotal.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kg</span>
-              </p>
-              <p className="text-[11px] text-accent font-medium">Calidad aprobada</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
-              <Factory className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Rendimiento</p>
-              <p className="text-2xl font-bold tracking-tight">{rendimientoPromedio}%</p>
-              <p className="text-[11px] text-muted-foreground">Eficiencia útil</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-info/10 text-info flex items-center justify-center shrink-0">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Scrap / Merma</p>
-              <p className="text-2xl font-bold tracking-tight">
-                {kgMermaTotal.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kg</span>
-              </p>
-              <p className="text-[11px] text-warn font-medium">Recuperable</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-warn/10 text-warn flex items-center justify-center shrink-0">
-              <Clock className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Resumen por Áreas de la Planta */}
-      <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">Producción por Áreas de Planta</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-1">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3 rounded-xl border bg-warn/5 border-warn/20 space-y-1">
-              <div className="flex items-center gap-1.5 text-warn font-semibold text-xs">
-                <Layers className="h-4 w-4" />
-                <span>Extrusión</span>
-              </div>
-              <p className="text-lg font-bold">{porArea.EXTRUSION.buenos.toFixed(0)} kg</p>
-              <p className="text-[11px] text-muted-foreground">
-                Merma: {porArea.EXTRUSION.merma.toFixed(0)} kg
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl border bg-info/5 border-info/20 space-y-1">
-              <div className="flex items-center gap-1.5 text-info dark:text-info font-semibold text-xs">
-                <Printer className="h-4 w-4" />
-                <span>Impresión</span>
-              </div>
-              <p className="text-lg font-bold">{porArea.IMPRESION.buenos.toFixed(0)} kg</p>
-              <p className="text-[11px] text-muted-foreground">
-                Merma: {porArea.IMPRESION.merma.toFixed(0)} kg
-              </p>
-            </div>
-
-            <div className="p-3 rounded-xl border bg-accent/5 border-accent/20 space-y-1">
-              <div className="flex items-center gap-1.5 text-accent dark:text-accent font-semibold text-xs">
-                <Scissors className="h-4 w-4" />
-                <span>Confección</span>
-              </div>
-              <p className="text-lg font-bold">{porArea.CONFECCION.buenos.toFixed(0)} kg</p>
-              <p className="text-[11px] text-muted-foreground">
-                Merma: {porArea.CONFECCION.merma.toFixed(0)} kg
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Listado de Órdenes Recientes con Barra de Progreso */}
-      <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-semibold">Órdenes de Trabajo Recientes</CardTitle>
-            <p className="text-xs text-muted-foreground">Pedidos activos y su estado de avance</p>
-          </div>
-          <Link
-            href="/produccion/ordenes"
-            className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-0.5"
-          >
-            Ver catálogo completo <ChevronRight className="h-3 w-3" />
+          ))}
+          <Link href="/produccion/ordenes" className="inline-flex h-10 items-center text-[14px] font-medium text-brand-ink hover:underline">
+            Todas las órdenes
           </Link>
-        </CardHeader>
-        <CardContent className="p-4 pt-1">
-          {ordenes.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              <CheckCircle2 className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              No existen órdenes registradas aún
+        </div>
+      </Encabezado>
+
+      <Cifras
+        etiqueta={`Últimos ${DIAS} días`}
+        items={[
+          { etiqueta: "En producción", valor: String(enCurso.length), nota: enCurso.length === 1 ? "orden abierta" : "órdenes abiertas" },
+          { etiqueta: "Producto terminado", valor: formatKg(terminado, 0), nota: `últimos ${DIAS} días` },
+          { etiqueta: "Merma y rechazo", valor: formatKg(merma, 0), nota: `últimos ${DIAS} días`, tono: merma > 0 ? "warn" : undefined },
+          { etiqueta: "Pesajes", valor: String(registros.length), nota: `últimos ${DIAS} días` },
+        ]}
+      />
+
+      <Seccion titulo="Por área" cuenta={undefined}>
+        <Card className="mt-2 grid gap-0 py-0 sm:grid-cols-3">
+          {areas.map((a, i) => (
+            <div key={a.area} className={`px-5 py-4 ${i > 0 ? "border-t border-line sm:border-l sm:border-t-0" : ""}`}>
+              <p className="text-sm font-semibold">{AREA_NOMBRE[a.area]}</p>
+              <p className="mt-1 text-[22px] font-extrabold tabular-nums">{formatKg(a.buenos, 0)}</p>
+              <p className="mt-0.5 text-xs text-muted">
+                {a.pesajes === 0
+                  ? "Sin pesajes"
+                  : `Rendimiento ${formatNumero(a.rend ?? 0, 1)}% · pérdida ${formatKg(a.perdida, 0)}`}
+              </p>
             </div>
-          ) : (
-            <div className="divide-y">
-              {ordenes.map((ot) => {
-                const kgPedidos = Number(ot.kgPedidos)
-                const kgFabricados = ot.registros.reduce((acc, r) => acc + Number(r.kgBuenos), 0)
-                const porcentaje = kgPedidos > 0 ? Math.min(100, Math.round((kgFabricados / kgPedidos) * 100)) : 0
+          ))}
+        </Card>
+      </Seccion>
 
-                return (
-                  <Link
-                    key={ot.id}
-                    href={`/produccion/ordenes/${ot.id}`}
-                    className="py-3.5 flex flex-col gap-1.5 hover:bg-black/[0.03] -mx-4 px-4 transition-colors block"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-foreground">
-                        OT #{ot.numero} — {ot.producto}
-                      </span>
-                      <EstadoOrden estado={ot.estado} />
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Cliente: {ot.cliente.nombre}</span>
-                      <span className="font-semibold text-foreground">
-                        {kgFabricados.toFixed(0)} / {kgPedidos.toFixed(0)} kg ({porcentaje}%)
-                      </span>
-                    </div>
-
-                    {/* Barra de progreso de fabricación */}
-                    <div className="w-full bg-elevated rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${porcentaje}%` }}
-                      />
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Seccion titulo="En producción" cuenta={enCurso.length} verTodo={{ href: "/produccion/ordenes", texto: "Todas las órdenes" }}>
+        {enCurso.length === 0 ? (
+          <Vacio>
+            No hay órdenes abiertas.
+            {gestiona && (
+              <>
+                {" "}
+                <Link href="/produccion/ordenes/nueva" className="font-semibold text-brand-ink hover:underline">
+                  Crear una orden
+                </Link>
+              </>
+            )}
+          </Vacio>
+        ) : (
+          <div>
+            {enCurso.map((ot) => (
+              <FilaOrden key={ot.id} ot={ot} />
+            ))}
+          </div>
+        )}
+      </Seccion>
     </div>
   )
 }

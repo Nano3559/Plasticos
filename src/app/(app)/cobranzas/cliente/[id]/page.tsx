@@ -1,292 +1,164 @@
-import { formatBs } from "@/lib/formato"
-import { prisma } from "@/lib/prisma"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, FileSpreadsheet, Plus, Truck, Banknote } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Plus } from "lucide-react"
+import { prisma } from "@/lib/prisma"
+import { calcularCartera } from "@/lib/cartera"
+import { formatBs, formatKg, formatPrecio } from "@/lib/formato"
+import { MEDIO_PAGO } from "@/lib/etiquetas"
+import { Cifras } from "@/components/ui/cifras"
+import { Encabezado } from "@/components/ui/encabezado"
+import { Seccion } from "@/components/ui/seccion"
+import { FilaOrden } from "@/components/produccion/fila-orden"
 
 export const dynamic = "force-dynamic"
 
-export default async function ClienteDetallePage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = await params
+const MAX_MOVIMIENTOS = 60
+const fecha = (d: Date) => d.toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).replace(".", "")
 
-  const cliente = await prisma.cliente.findUnique({
+type Mov = { id: string; fecha: Date; tipo: "ENTREGA" | "PAGO" | "NOTA"; titulo: string; detalle: string; monto: number; saldo: number }
+
+export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const c = await prisma.cliente.findUnique({
     where: { id },
     include: {
       ordenes: {
-        include: {
-          entregas: true,
-        },
+        orderBy: { numero: "desc" },
+        include: { entregas: true, registros: { select: { area: true, kgBuenos: true } }, cliente: { select: { nombre: true } } },
       },
-      pagos: {
-        orderBy: { fecha: "desc" },
-      },
-      notasCredito: {
-        where: { anuladaEn: null },
-        orderBy: { fecha: "desc" },
-        include: { orden: { select: { numero: true, refExterna: true } } },
-      },
+      pagos: true,
+      notasCredito: { where: { anuladaEn: null }, include: { orden: { select: { numero: true, refExterna: true } } } },
     },
   })
+  if (!c) notFound()
 
-  if (!cliente) notFound()
+  const cartera = calcularCartera(c)
+  const ot = (o: { numero: number; refExterna: string | null } | null | undefined) => (o ? `OT ${o.refExterna ?? `#${o.numero}`}` : null)
+  const ordenPorId = new Map(c.ordenes.map((o) => [o.id, o]))
 
-  let totalEntregado = 0
-  const entregas: { id: string; ot: number; producto: string; notaRemision: string | null; bultos: number | null; kg: number; precio: number; monto: number; fecha: Date }[] = []
-  for (const orden of cliente.ordenes) {
-    const precio = Number(orden.precioUnitario)
-    for (const e of orden.entregas) {
-      const kg = Number(e.kgEntregados)
-      const monto = kg * precio
-      totalEntregado += monto
-      entregas.push({
+  // Todos los movimientos en orden, con el saldo que dejó cada uno
+  const movs: Omit<Mov, "saldo">[] = [
+    ...c.ordenes.flatMap((o) =>
+      o.entregas.map((e) => ({
         id: e.id,
-        ot: orden.numero,
-        producto: orden.producto,
-        notaRemision: e.notaRemision,
-        bultos: e.bultos === null ? null : Number(e.bultos),
-        kg,
-        precio,
-        monto,
         fecha: e.fecha,
-      })
-    }
-  }
+        tipo: "ENTREGA" as const,
+        titulo: `Entrega · ${ot(o)}`,
+        detalle: [`${formatKg(e.kgEntregados, 1)} × ${formatPrecio(o.precioUnitario)}`, e.notaRemision && `N.R. ${e.notaRemision}`, o.producto].filter(Boolean).join(" · "),
+        monto: Number(e.kgEntregados) * Number(o.precioUnitario),
+      }))
+    ),
+    ...c.pagos.map((p) => ({
+      id: p.id,
+      fecha: p.fecha,
+      tipo: "PAGO" as const,
+      titulo: `Pago · ${MEDIO_PAGO[p.medio] ?? p.medio}`,
+      detalle: [p.referencia && `ref. ${p.referencia}`, ot(p.ordenId ? ordenPorId.get(p.ordenId) : null)].filter(Boolean).join(" · "),
+      monto: -Number(p.monto),
+    })),
+    ...c.notasCredito.map((n) => ({
+      id: n.id,
+      fecha: n.fecha,
+      tipo: "NOTA" as const,
+      titulo: n.tipo === "DEVOLUCION" ? "Devolución" : "Descuento",
+      detalle: [n.motivo, n.kg && formatKg(n.kg, 1), ot(n.orden)].filter(Boolean).join(" · "),
+      monto: -Number(n.monto),
+    })),
+  ].sort((a, b) => a.fecha.getTime() - b.fecha.getTime() || (a.monto > 0 ? -1 : 1))
+  const conSaldo: Mov[] = movs
+    .reduce<Mov[]>((acc, m) => [...acc, { ...m, saldo: (acc.at(-1)?.saldo ?? 0) + m.monto }], [])
+    .reverse()
 
-  // Sort deliveries newest first
-  entregas.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-
-  const totalPagado = cliente.pagos.reduce((sum, p) => sum + Number(p.monto), 0)
-  const totalCreditos = cliente.notasCredito.reduce((sum, n) => sum + Number(n.monto), 0)
-  const saldo = Math.max(0, totalEntregado - totalPagado - totalCreditos)
+  const vencido = cartera.saldo > 0.5 && cartera.diasMasAntiguo > c.diasCredito
+  const enCurso = c.ordenes.filter((o) => o.estado !== "ENTREGADA")
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/cobranzas">
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 rounded-lg">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-                {cliente.nombre}
-              </h1>
-              <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-highlight text-subdued">
-                Crédito: {cliente.diasCredito} días
-              </span>
-            </div>
-            <p className="text-xs text-subdued">
-              {cliente.telefono ? `Tel: ${cliente.telefono} • ` : ""}
-              {cliente.direccion ? `Dir: ${cliente.direccion} • ` : ""}
-              Estado de cuenta de cliente
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link href={`/cobranzas/kardex?clienteId=${cliente.id}`}>
-            <Button size="sm" className="bg-brand hover:bg-brand-hover text-on-brand gap-1.5 shadow-xs font-semibold">
-              <FileSpreadsheet className="h-4 w-4" />
-              <span>Ver Kardex Completo</span>
-            </Button>
-          </Link>
-          <Link href={`/cobranzas/pago?clienteId=${cliente.id}`}>
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs text-accent border-accent/30 hover:bg-accent/10">
-              <Plus className="h-3.5 w-3.5" />
-              <span>Abonar</span>
-            </Button>
-          </Link>
-          <Link href={`/cobranzas/nota-credito?clienteId=${cliente.id}`}>
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-              <span>Devolución / descuento</span>
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* KPI Balance Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Total Remisiones Entregadas</div>
-          <div className="mt-1 text-2xl font-bold text-fg tabular-nums">
-            {formatBs(totalEntregado)}
-          </div>
-          <div className="mt-1 text-[11px] text-muted">{entregas.length} notas de entrega</div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Total Pagos & Cobros</div>
-          <div className="mt-1 text-2xl font-bold text-accent tabular-nums">
-            {formatBs(totalPagado)}
-          </div>
-          <div className="mt-1 text-[11px] text-muted">
-            {cliente.pagos.length} abonos asentados
-            {totalCreditos > 0.005 ? ` · ${formatBs(totalCreditos)} en devoluciones y descuentos` : ""}
-          </div>
-        </div>
-
-        <div
-          className={`p-3.5 rounded-xl border shadow-xs ${
- saldo > 0
- ? "border-warn/30 bg-warn/10"
- : "border-accent/30 bg-accent/10"
- }`}
-        >
-          <div className="text-[11px] font-semibold text-subdued">Saldo Pendiente de Cobro</div>
-          <div
-            className={`mt-1 text-2xl font-extrabold tabular-nums ${
- saldo > 0 ? "text-warn" : "text-accent"
- }`}
-          >
-            {formatBs(saldo)}
-          </div>
-          <div className="mt-1 text-[11px] text-subdued">
-            {saldo > 0 ? "Facturas pendientes de liquidar" : "Cuenta al día (Saldo 0.00)"}
-          </div>
-        </div>
-      </div>
-
-      {/* Two columns: Entregas on Left, Pagos on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Entregas List */}
-        <Card className="border-line shadow-sm bg-card overflow-hidden">
-          <CardHeader className="pb-3 border-b border-line flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-info" />
-              <CardTitle className="text-base font-semibold text-fg">
-                Remisiones & Entregas ({entregas.length})
-              </CardTitle>
-            </div>
-            <Link href="/cobranzas/entrega">
-              <Button size="sm" variant="ghost" className="h-8 text-xs text-info">
-                + Nueva Entrega
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-line max-h-96 overflow-y-auto">
-              {entregas.map((e) => (
-                <div key={e.id} className="p-3.5 hover:bg-elevated/50 transition flex items-center justify-between text-xs">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-fg">
-                        {e.notaRemision ? `Remisión #${e.notaRemision}` : `OT #${e.ot}`}
-                      </span>
-                      <span className="text-muted">
-                        {new Date(e.fecha).toLocaleDateString("es-BO")}
-                      </span>
-                    </div>
-                    <div className="text-subdued">
-                      {e.producto} • {e.kg.toFixed(2)} kg @ {formatBs(e.precio)}
-                      {e.bultos ? ` (${e.bultos.toLocaleString("es-BO")} bultos)` : ""}
-                    </div>
-                  </div>
-
-                  <div className="text-right font-bold text-fg tabular-nums">
-                    {formatBs(e.monto)}
-                  </div>
-                </div>
-              ))}
-
-              {entregas.length === 0 && (
-                <div className="p-6 text-center text-xs text-subdued">
-                  Sin entregas registradas para este cliente
-                </div>
+    <div className="space-y-10">
+      <Encabezado
+        miga={{ href: "/cobranzas", texto: "Cobranzas" }}
+        titulo={c.nombre}
+        descripcion={[c.contacto, c.telefono, c.direccion, `crédito de ${c.diasCredito} días`].filter(Boolean).join(" · ")}
+      >
+        <div className="flex flex-wrap gap-x-4 gap-y-1" role="group" aria-label="Acciones">
+          {[
+            { href: `/cobranzas/pago?clienteId=${c.id}`, texto: "Registrar pago", mas: true },
+            { href: `/cobranzas/nota-credito?clienteId=${c.id}`, texto: "Devolución o descuento", mas: true },
+            { href: `/cobranzas/resumen?cliente=${c.id}`, texto: "Gráficos" },
+            { href: `/cobranzas/kardex?clienteId=${c.id}`, texto: "Kardex" },
+          ].map((a) => (
+            <Link key={a.href} href={a.href} className="group inline-flex h-10 items-center gap-2 text-[14px] text-subdued transition-colors hover:text-brand-ink">
+              {a.mas && (
+                <span className="grid size-[18px] place-items-center rounded-full text-brand transition-colors group-hover:bg-brand group-hover:text-on-brand">
+                  <Plus className="size-4" strokeWidth={2.5} />
+                </span>
               )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pagos List */}
-        <Card className="border-line shadow-sm bg-card overflow-hidden">
-          <CardHeader className="pb-3 border-b border-line flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-accent" />
-              <CardTitle className="text-base font-semibold text-fg">
-                Abonos & Pagos ({cliente.pagos.length})
-              </CardTitle>
-            </div>
-            <Link href="/cobranzas/pago">
-              <Button size="sm" variant="ghost" className="h-8 text-xs text-accent">
-                + Registrar Abono
-              </Button>
+              {a.texto}
             </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-line max-h-96 overflow-y-auto">
-              {cliente.pagos.map((p) => (
-                <div key={p.id} className="p-3.5 hover:bg-elevated/50 transition flex items-center justify-between text-xs">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-accent bg-accent/10 px-2 py-0.5 rounded border border-accent/30">
-                        {p.medio}
-                      </span>
-                      <span className="text-muted">
-                        {new Date(p.fecha).toLocaleDateString("es-BO")}
-                      </span>
-                    </div>
-                    {p.referencia && (
-                      <p className="text-subdued">Ref: {p.referencia}</p>
-                    )}
-                  </div>
+          ))}
+        </div>
+      </Encabezado>
 
-                  <div className="text-right font-bold text-accent tabular-nums">
-                    +{formatBs(Number(p.monto))}
-                  </div>
-                </div>
-              ))}
+      <Cifras
+        items={[
+          {
+            etiqueta: cartera.aFavor > 0 ? "A favor del cliente" : "Saldo",
+            valor: formatBs(cartera.aFavor > 0 ? cartera.aFavor : cartera.saldo),
+            nota: cartera.saldo > 0.5 ? `${cartera.diasMasAntiguo} días desde la entrega más antigua${vencido ? " · vencido" : ""}` : "al día",
+            tono: vencido ? "danger" : cartera.saldo > 0.5 ? undefined : "accent",
+          },
+          { etiqueta: "Entregado", valor: formatBs(cartera.totalEntregado, 0) },
+          { etiqueta: "Pagado", valor: formatBs(cartera.totalPagado, 0), tono: "brand" },
+          { etiqueta: "Devoluciones y descuentos", valor: formatBs(cartera.totalCreditos, 0) },
+        ]}
+      />
 
-              {cliente.pagos.length === 0 && (
-                <div className="p-6 text-center text-xs text-subdued">
-                  Sin pagos registrados para este cliente
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {cliente.notasCredito.length > 0 && (
-        <Card className="border-line shadow-sm bg-card overflow-hidden">
-          <CardHeader className="pb-3 border-b border-line">
-            <CardTitle className="text-base font-semibold text-fg">
-              Devoluciones y descuentos ({cliente.notasCredito.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-line">
-              {cliente.notasCredito.map((n) => (
-                <div key={n.id} className="p-3.5 flex items-center justify-between text-xs">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-warn bg-warn/10 px-2 py-0.5 rounded border border-warn/30">
-                        {n.tipo === "DEVOLUCION" ? "DEVOLUCIÓN" : "DESCUENTO"}
-                      </span>
-                      <span className="text-muted">{new Date(n.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })}</span>
-                    </div>
-                    <p className="text-subdued">
-                      {n.motivo}
-                      {n.kg ? ` · ${Number(n.kg).toLocaleString("es-BO")} kg` : ""}
-                      {n.orden ? ` · OT ${n.orden.refExterna ?? `#${n.orden.numero}`}` : ""}
-                      {n.notaRemision ? ` · N.R. ${n.notaRemision}` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right font-bold text-warn tabular-nums">−{formatBs(Number(n.monto))}</div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {cartera.saldo > 0.5 && (
+        <p className="-mt-6 text-[13px] text-subdued">
+          Por antigüedad: 0–15 días {formatBs(cartera.saldoPorRango["0-15"], 0)} · 16–30 {formatBs(cartera.saldoPorRango["16-30"], 0)} ·{" "}
+          <span className={cartera.saldoPorRango["31-60"] > 0.5 ? "text-warn" : ""}>31–60 {formatBs(cartera.saldoPorRango["31-60"], 0)}</span> ·{" "}
+          <span className={cartera.saldoPorRango["60+"] > 0.5 ? "font-semibold text-danger" : ""}>más de 60 {formatBs(cartera.saldoPorRango["60+"], 0)}</span>
+        </p>
       )}
+
+      {enCurso.length > 0 && (
+        <Seccion titulo="Órdenes sin entregar del todo" cuenta={enCurso.length}>
+          <div>
+            {enCurso.slice(0, 6).map((o) => (
+              <FilaOrden key={o.id} ot={o} />
+            ))}
+          </div>
+        </Seccion>
+      )}
+
+      <Seccion titulo="Movimientos" cuenta={conSaldo.length}>
+        {conSaldo.length === 0 ? (
+          <p className="py-6 text-subdued">Todavía no hay entregas ni pagos.</p>
+        ) : (
+          <ul>
+            {conSaldo.slice(0, MAX_MOVIMIENTOS).map((m) => (
+              <li key={m.id} className="flex items-start justify-between gap-4 border-b border-line py-3 last:border-b-0">
+                <span className="min-w-0">
+                  <span className="block font-semibold">{m.titulo}</span>
+                  {m.detalle && <span className="mt-0.5 block text-[13px] text-subdued">{m.detalle}</span>}
+                  <span className="mt-0.5 block text-xs text-muted">{fecha(m.fecha)}</span>
+                </span>
+                <span className="shrink-0 text-right tabular-nums">
+                  <span className={`block font-bold ${m.monto < 0 ? "text-accent" : ""}`}>
+                    {m.monto < 0 ? "−" : "+"}
+                    {formatBs(Math.abs(m.monto))}
+                  </span>
+                  <span className="block text-xs text-muted">saldo {formatBs(m.saldo)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {conSaldo.length > MAX_MOVIMIENTOS && (
+          <Link href={`/cobranzas/kardex?clienteId=${c.id}`} className="mt-3 inline-block text-[13px] font-semibold text-brand-ink hover:underline">
+            Ver los {conSaldo.length} movimientos en el kardex
+          </Link>
+        )}
+      </Seccion>
     </div>
   )
 }

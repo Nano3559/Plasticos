@@ -5,10 +5,12 @@ import { prisma } from "@/lib/prisma"
 import { stockPorMaterial } from "@/lib/stock"
 import { consultarCartera, resumirCartera } from "@/lib/cartera"
 import { kgBuenosFinales } from "@/lib/costos"
+import { haceDias } from "@/lib/rechazos"
 import { formatBs, formatKg } from "@/lib/formato"
+import { AREA_NOMBRE } from "@/lib/etiquetas"
 import { horaLaPaz, turnoDeHora, TURNO_NOMBRE } from "@/lib/turno"
 import { Card } from "@/components/ui/card"
-import { EstadoOrden } from "@/components/ui/estado-orden"
+import { FilaOrden } from "@/components/produccion/fila-orden"
 import { FilaTarea, VacioTodoOk, type Prioridad } from "@/components/ui/fila-tarea"
 import { Seccion } from "@/components/ui/seccion"
 import { consultarResumen } from "@/lib/resumen-cobranzas-db"
@@ -16,9 +18,6 @@ import { GraficoMensual } from "../cobranzas/resumen/graficos"
 
 export const dynamic = "force-dynamic"
 
-function haceDias(dias: number): Date {
-  return new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
-}
 
 function saludo(hora: number): string {
   if (hora >= 5 && hora < 12) return "Buenos días"
@@ -242,38 +241,8 @@ export default async function DashboardPage() {
               <p className="py-6 text-subdued">No hay órdenes abiertas.</p>
             ) : (
               <div>
-                {progreso.slice(0, 5).map(({ ot, hecho, pedido, pct }) => (
-                  <Link
-                    key={ot.id}
-                    href={`/produccion/ordenes/${ot.id}`}
-                    className="group block border-b border-line py-3 last:border-b-0"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate text-[15px] group-hover:text-brand-ink">
-                        OT #{ot.numero} · {ot.cliente.nombre}
-                      </span>
-                      <EstadoOrden estado={ot.estado} />
-                    </div>
-                    <p className="mt-0.5 truncate text-sm text-subdued">
-                      {ot.producto}
-                      {ot.medida ? ` (${ot.medida})` : ""}
-                    </p>
-                    <div className="mt-2 flex items-center gap-3">
-                      <div
-                        className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/[0.07]"
-                        role="progressbar"
-                        aria-label={`Avance de la OT ${ot.numero}`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={pct}
-                      >
-                        <div className={`h-full rounded-full ${pct >= 100 ? "bg-accent" : "bg-info"}`} style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="shrink-0 text-xs tabular-nums text-subdued">
-                        {formatKg(hecho, 0)} / {formatKg(pedido, 0)}
-                      </span>
-                    </div>
-                  </Link>
+                {progreso.slice(0, 5).map(({ ot }) => (
+                  <FilaOrden key={ot.id} ot={ot} />
                 ))}
               </div>
             )}
@@ -311,7 +280,7 @@ export default async function DashboardPage() {
                     href={`/produccion/ordenes/${r.orden.id}`}
                     prioridad="ok"
                     titulo={`OT #${r.orden.numero} · ${r.orden.producto}`}
-                    detalle={`${r.area.toLowerCase()} · turno ${TURNO_NOMBRE[r.turno]}`}
+                    detalle={`${AREA_NOMBRE[r.area]} · turno ${TURNO_NOMBRE[r.turno]}`}
                     derecha={formatKg(r.kgBuenos, 1)}
                   />
                 ))}

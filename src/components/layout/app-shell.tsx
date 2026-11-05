@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation"
 import { Hash, LogOut, PanelLeft, Plus, Users } from "lucide-react"
 import { ACCION_PRINCIPAL, MODULOS, ROL_LABEL, type Rol } from "./modules"
 import { TurnoChip } from "./turno-chip"
+import { Campana } from "./campana"
 
 function esActivo(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
@@ -31,9 +32,12 @@ function IconoHoy({ className = "" }: { className?: string }) {
 export function AppShell({
   children,
   user,
+  avisosSinLeer = null,
 }: {
   children: React.ReactNode
   user: { name?: string | null; rol?: string }
+  /** Avisos sin leer al cargar; null si este rol no recibe avisos (no se muestra la campana). */
+  avisosSinLeer?: number | null
 }) {
   const pathname = usePathname()
   const [lateralAbierta, setLateralAbierta] = useState(true)
@@ -84,6 +88,7 @@ export function AppShell({
                 <span className="block truncate text-xs text-subdued">{ROL_LABEL[rol] ?? rol}</span>
               </span>
             </Link>
+            {avisosSinLeer !== null && <Campana inicial={avisosSinLeer} className="size-8" />}
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/login" })}
@@ -188,6 +193,7 @@ export function AppShell({
               <span className="text-[15px] font-bold">{nombre.split(" ")[0]}</span>
             </Link>
             <TurnoChip className="ml-auto" />
+            {avisosSinLeer !== null && <Campana inicial={avisosSinLeer} className="size-10" />}
             <button
               type="button"
               onClick={() => signOut({ callbackUrl: "/login" })}

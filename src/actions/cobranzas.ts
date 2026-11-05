@@ -23,7 +23,7 @@ export async function registrarEntrega(formData: FormData) {
 
   const { ordenId, notaRemision, fecha, kgEntregados, bultos } = parsed.data
 
-  const orden = await prisma.ordenTrabajo.findUnique({ where: { id: ordenId }, select: { id: true, kgPedidos: true } })
+  const orden = await prisma.ordenTrabajo.findUnique({ where: { id: ordenId }, select: { id: true, kgPedidos: true, clienteId: true } })
   if (!orden) return fail("La orden de trabajo no existe")
 
   await prisma.$transaction(async (tx) => {
@@ -45,6 +45,8 @@ export async function registrarEntrega(formData: FormData) {
 
   revalidatePath("/cobranzas")
   revalidatePath("/produccion/ordenes")
+  revalidatePath(`/cobranzas/cliente/${orden.clienteId}`)
+  return { ok: true as const, clienteId: orden.clienteId }
 }
 
 export async function registrarPago(formData: FormData) {
@@ -80,6 +82,8 @@ export async function registrarPago(formData: FormData) {
   })
 
   revalidatePath("/cobranzas")
+  revalidatePath(`/cobranzas/cliente/${clienteId}`)
+  return { ok: true as const, clienteId }
 }
 
 /**

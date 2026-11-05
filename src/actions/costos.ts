@@ -42,4 +42,5 @@ export async function registrarCostoTurno(formData: FormData) {
   })
 
   revalidatePath("/costos")
+  return { ok: true as const }
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { getSessionUser } from "@/lib/session"
 import { notFound } from "next/navigation"
 import { KardexMaterialView } from "./kardex-material-view"
 
@@ -10,6 +11,7 @@ export default async function DetalleMaterialPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const user = await getSessionUser()
 
   const material = await prisma.material.findUnique({
     where: { id },
@@ -23,7 +25,7 @@ export default async function DetalleMaterialPage({
     orderBy: { createdAt: "asc" },
     include: {
       user: true,
-      orden: { select: { numero: true } },
+      orden: { select: { id: true, numero: true, refExterna: true } },
     },
   })
 
@@ -37,7 +39,7 @@ export default async function DetalleMaterialPage({
       motivo: string | null
       proveedor: string | null
       lote: string | null
-      ordenNumero: number | null
+      orden: { id: string; etiqueta: string } | null
       userName: string
       createdAt: string
       saldoAcumulado: number
@@ -56,7 +58,7 @@ export default async function DetalleMaterialPage({
       motivo: m.motivo,
       proveedor: m.proveedor,
       lote: m.lote,
-      ordenNumero: m.orden?.numero ?? null,
+      orden: m.orden ? { id: m.orden.id, etiqueta: `OT ${m.orden.refExterna ?? `#${m.orden.numero}`}` } : null,
       userName: m.user.nombre,
       createdAt: m.createdAt.toISOString(),
       saldoAcumulado,
@@ -79,6 +81,7 @@ export default async function DetalleMaterialPage({
         stock: movimientosConSaldo.at(-1)?.saldoAcumulado ?? 0,
       }}
       movimientos={movimientosDesc}
+      puedeVerOT={user?.rol !== "ALMACEN"}
     />
   )
 }

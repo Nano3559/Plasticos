@@ -6,6 +6,7 @@ type Rol = "OPERADOR" | "ALMACEN" | "ADMIN" | "GERENCIA"
 const ACCESO: { prefijo: string; roles: Rol[] }[] = [
   { prefijo: "/dashboard", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { prefijo: "/cuenta", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
+  { prefijo: "/notificaciones", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { prefijo: "/usuarios", roles: ["GERENCIA"] },
   { prefijo: "/inventario", roles: ["ALMACEN", "ADMIN", "GERENCIA"] },
   { prefijo: "/produccion/clientes", roles: ["ADMIN", "GERENCIA"] },

@@ -1,24 +1,16 @@
-import { prisma } from "@/lib/prisma"
+import { materialesParaFormulario, textosUsados } from "@/lib/materiales-form"
 import { EntradaForm } from "./entrada-form"
 
 export const dynamic = "force-dynamic"
 
-export default async function EntradaPage() {
-  const materiales = await prisma.material.findMany({
-    orderBy: { nombre: "asc" },
-    select: {
-      id: true,
-      nombre: true,
-      categoria: true,
-      unidad: true,
-      costoPromedio: true,
-    },
-  })
-
-  const serialized = materiales.map((m) => ({
-    ...m,
-    costoPromedio: Number(m.costoPromedio),
-  }))
-
-  return <EntradaForm materiales={serialized} />
+export default async function EntradaPage({ searchParams }: { searchParams: Promise<{ material?: string }> }) {
+  const { material } = await searchParams
+  const [materiales, proveedores] = await Promise.all([materialesParaFormulario(), textosUsados("proveedor", "ENTRADA")])
+  return (
+    <EntradaForm
+      materiales={materiales}
+      proveedores={proveedores}
+      materialInicial={materiales.some((m) => m.id === material) ? material : undefined}
+    />
+  )
 }

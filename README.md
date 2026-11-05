@@ -221,6 +221,48 @@ Está en **Cobranzas → Resumen y gráficos** (`/cobranzas/resumen`). En el ini
 - **Todos los clientes:** quién debe más, y una tabla con cada cliente que abre su propio resumen al hacer clic.
 - **Un cliente:** qué productos compra, sus últimos movimientos con el saldo corrido, y accesos para registrar un pago o ver su kardex. Si tiene teléfono, también aparece un recordatorio por WhatsApp.
 
+## Gastos generales
+
+Está en **Costos → Gastos generales** (`/costos/gastos`), para Administración y Gerencia. Sirve para todo lo que la planta paga aparte de materia prima, mano de obra y energía: mantenimiento, repuestos, fletes, alquiler, servicios, impuestos.
+
+- **Registrar:** categoría (hay botones para las más comunes, o se escribe otra), monto, fecha, detalle y N° de factura o recibo. El monto se puede escribir como `1.250,50` o `1250.50`. Queda guardado quién lo registró.
+- **Ver por mes:** total del mes, comparación con el mes anterior, barras de los últimos 6 meses y reparto por categoría. Las flechas cambian de mes y el enlace queda en la barra de direcciones (`?mes=2026-11`).
+- **Borrar:** el ícono de papelera junto a cada gasto lo elimina, después de confirmar. No se puede deshacer.
+- **Excel:** el botón de la página descarga el mes que estás viendo. En **Reportes** se descargan todos.
+
+Los gastos generales **no** entran en el costo por 100 kg: ese cálculo sigue siendo materia prima, tintas, mano de obra y energía.
+
+## Avisos de inventario
+
+Cada vez que alguien registra un **vale de salida** o un **ajuste** de inventario, Almacén y Gerencia reciben un aviso dentro de la app. Quien hizo el movimiento no recibe su propio aviso. Si la salida o el ajuste deja un material **por debajo de su stock mínimo**, llega además un aviso de reposición, una sola vez: no se repite mientras el material siga bajo el mínimo.
+
+- **Campana:** en la barra lateral (escritorio) y en la barra superior (celular), con la cantidad sin leer. Se actualiza cada minuto y al volver a la pestaña.
+- **Página de avisos** (`/notificaciones`): material, kg, quién lo hizo, turno, OT y motivo. Al tocar un aviso se marca como leído y abre el kardex de ese material. También se pueden marcar todos como leídos.
+- Los avisos leídos se borran solos a los 90 días.
+- Para cambiar quién recibe los avisos, edita `ROLES_AVISO_INVENTARIO` en `src/lib/avisos-texto.ts`.
+
+## Rechazos de material por proveedor
+
+Cuando el operador registra producción en **Extrusión** con kg rechazados, el formulario pide de dónde vino ese material y por qué se rechazó:
+
+- **Lote:** se elige de la lista de entradas de almacén de los últimos 6 meses. Primero aparecen los lotes del material que se entregó a esa OT con vale de salida. El proveedor se toma de la entrada, no se escribe. Si el lote no está en la lista, se puede escribir el proveedor y el lote a mano.
+- **Motivo:** húmedo, sucio o contaminado, mezclado, color incorrecto, no funde bien, peso no coincide u otro, con un detalle opcional.
+- En Impresión y Confección no se pide: ahí el rechazo es del producto, no de la materia prima.
+
+Cada rechazo avisa a Almacén y Gerencia por la campana. En **Inventario → Rechazos por proveedor** (`/inventario/rechazos`) se ve, para los últimos 3, 6 o 12 meses, cuántos kg entregó cada proveedor, cuántos se rechazaron, el porcentaje (en rojo si pasa del 5%), el motivo más común y los lotes. Tocando un proveedor se ven solo sus rechazos. El botón Excel descarga el detalle. Los rechazos registrados antes de esta función aparecen como "Sin proveedor".
+
+## Cómo escribir números
+
+Todos los campos de kg, Bs y precios aceptan el número como se escribe en Bolivia: `1.250,50` (punto para miles, coma para decimales). También funcionan `1250,50`, `1250.50` y `Bs 120`. Debajo del campo aparece cómo se entendió, por ejemplo «Se guardará: 1.250,50 kg».
+
+- En kg y Bs (2 decimales), `1.250` es mil doscientos cincuenta.
+- En precios y costos por kg (hasta 4 decimales), `14.375` es catorce coma trescientos setenta y cinco.
+- La misma regla se aplica en el servidor (`src/lib/schemas/numero.ts`), así que no depende de la pantalla.
+
+## Interfaz
+
+Todas las pantallas usan las mismas piezas de `src/components/ui/`: `Encabezado` (migas, título y acciones), `Cifras` (fila de números clave), `CampoNumero`, `Opciones` (botones grandes para turno, área o medio de pago), `ElegirTurno`, `Selector`, `MensajeError`, `MensajeInfo` y `Vacio`. Los nombres de turnos, áreas, categorías y medios de pago salen de `src/lib/etiquetas.ts`. Para una pantalla nueva, conviene copiar una existente parecida: `src/app/(app)/costos/gastos/nuevo/gasto-form.tsx` para un formulario, o `src/app/(app)/produccion/ordenes/page.tsx` para una lista.
+
 ## Desarrollo local
 
 Necesitas Node 22 y Docker.

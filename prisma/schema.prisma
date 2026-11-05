@@ -68,6 +68,8 @@ model User {
   registros    RegistroProduccion[]
   createdAt    DateTime               @default(now())
   notasCredito NotaCredito[]
+  gastos       Gasto[]
+  notificaciones Notificacion[]
 }
 
 model Cliente {
@@ -110,6 +112,7 @@ model MovimientoInventario {
   ordenId       String?
   orden         OrdenTrabajo?   @relation(fields: [ordenId], references: [id])
   createdAt     DateTime        @default(now())
+  rechazos      RegistroProduccion[] @relation("RechazoEntrada")
 
   @@index([materialId, createdAt])
 }
@@ -144,10 +147,19 @@ model RegistroProduccion {
   kgBuenos     Decimal      @db.Decimal(12, 2)
   kgMerma      Decimal      @db.Decimal(12, 2)
   kgRechazado  Decimal      @default(0) @db.Decimal(12, 2)
+  /// Rechazo en extrusión: de qué entrada (lote) vino el material malo, para saber qué proveedor entrega mal
+  rechazoEntradaId String?
+  rechazoEntrada   MovimientoInventario? @relation("RechazoEntrada", fields: [rechazoEntradaId], references: [id], onDelete: SetNull)
+  rechazoProveedor String? // copiado de la entrada, o escrito a mano si el lote no estaba registrado
+  rechazoLote      String?
+  rechazoMotivo    String?
+  rechazoNota      String?
   horasMaquina Decimal?     @db.Decimal(6, 2)
   userId       String
   user         User         @relation(fields: [userId], references: [id])
   createdAt    DateTime     @default(now())
+
+  @@index([rechazoEntradaId])
 }
 
 model Entrega {
@@ -183,6 +195,12 @@ model Gasto {
   categoria   String
   descripcion String?
   monto       Decimal  @db.Decimal(12, 2)
+  comprobante String? // N° de factura o recibo
+  userId      String? // quién lo registró (opcional para gastos anteriores a este campo)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([fecha])
 }
 
 model CostoTurno {
@@ -223,4 +241,27 @@ model NotaCredito {
   anuladaMotivo String?
 
   @@index([clienteId, fecha])
+}
+
+enum TipoNotificacion {
+  SALIDA     // vale de salida de inventario
+  AJUSTE     // corrección de inventario (suma o resta)
+  STOCK_BAJO // una salida o ajuste dejó el material por debajo de su mínimo
+  RECHAZO    // material rechazado en extrusión, con su proveedor y lote
+}
+
+/// Avisos dentro de la app. Una fila por destinatario, para que cada uno marque las suyas como leídas.
+model Notificacion {
+  id           String           @id @default(cuid())
+  userId       String           // destinatario
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tipo         TipoNotificacion
+  titulo       String
+  detalle      String?
+  href         String?          // a dónde lleva al tocarla
+  movimientoId String?          // movimiento de inventario que la generó
+  leidaEn      DateTime?
+  createdAt    DateTime         @default(now())
+
+  @@index([userId, leidaEn, createdAt])
 }

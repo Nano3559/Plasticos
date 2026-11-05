@@ -1,280 +1,109 @@
-import { prisma } from "@/lib/prisma"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Flame, ChevronRight, Recycle } from "lucide-react"
 import Link from "next/link"
+import { prisma } from "@/lib/prisma"
+import { formatKg, formatNumero } from "@/lib/formato"
+import { AREA_NOMBRE } from "@/lib/etiquetas"
+import { Card } from "@/components/ui/card"
+import { Cifras } from "@/components/ui/cifras"
+import { Encabezado } from "@/components/ui/encabezado"
+import { Vacio } from "@/components/ui/mensaje"
+import { Seccion } from "@/components/ui/seccion"
 
 export const dynamic = "force-dynamic"
 
+const AREAS = ["EXTRUSION", "IMPRESION", "CONFECCION"] as const
+type Suma = { entrada: number; buenos: number; merma: number; rechazo: number }
+const vacia = (): Suma => ({ entrada: 0, buenos: 0, merma: 0, rechazo: 0 })
+const pct = (s: Suma) => (s.entrada > 0 ? ((s.merma + s.rechazo) / s.entrada) * 100 : 0)
+/** Rojo por encima de este % de desperdicio en un área. */
+const ALTO = 8
+
 export default async function DesperdicioPage() {
   const ordenes = await prisma.ordenTrabajo.findMany({
+    where: { registros: { some: {} } },
     orderBy: { fechaIngreso: "desc" },
-    include: {
-      cliente: true,
-      registros: true,
-    },
+    include: { cliente: { select: { nombre: true } }, registros: { select: { area: true, kgEntrada: true, kgBuenos: true, kgMerma: true, kgRechazado: true } } },
   })
 
-  // Global totals
-  let totalEntradaPlanta = 0
-  let totalBuenosPlanta = 0
-  let totalMermaPlanta = 0
-  let totalRechazadoPlanta = 0
-
-  for (const ot of ordenes) {
+  const planta = Object.fromEntries(AREAS.map((a) => [a, vacia()])) as Record<(typeof AREAS)[number], Suma>
+  const filas = ordenes.map((ot) => {
+    const porArea = Object.fromEntries(AREAS.map((a) => [a, vacia()])) as Record<(typeof AREAS)[number], Suma>
     for (const r of ot.registros) {
-      totalEntradaPlanta += Number(r.kgEntrada)
-      totalBuenosPlanta += Number(r.kgBuenos)
-      totalMermaPlanta += Number(r.kgMerma)
-      totalRechazadoPlanta += Number(r.kgRechazado)
+      for (const s of [porArea[r.area], planta[r.area]]) {
+        s.entrada += Number(r.kgEntrada)
+        s.buenos += Number(r.kgBuenos)
+        s.merma += Number(r.kgMerma)
+        s.rechazo += Number(r.kgRechazado)
+      }
     }
-  }
-
-  const totalDesperdicio = totalMermaPlanta + totalRechazadoPlanta
-  const porcentajeGlobal =
-    totalEntradaPlanta > 0 ? (totalDesperdicio / totalEntradaPlanta) * 100 : 0
+    const total = AREAS.reduce((acc, a) => ({ entrada: acc.entrada + porArea[a].entrada, buenos: 0, merma: acc.merma + porArea[a].merma, rechazo: acc.rechazo + porArea[a].rechazo }), vacia())
+    return { ot, porArea, total }
+  })
+  const totalPlanta = AREAS.reduce(
+    (acc, a) => ({ entrada: acc.entrada + planta[a].entrada, buenos: acc.buenos + planta[a].buenos, merma: acc.merma + planta[a].merma, rechazo: acc.rechazo + planta[a].rechazo }),
+    vacia()
+  )
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/costos">
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 rounded-lg">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-              Desperdicio & Mermas por Área
-            </h1>
-            <p className="text-xs sm:text-sm text-subdued">
-              Control de merma recuperable para molienda y material rechazado
-            </p>
-          </div>
-        </div>
+    <div className="space-y-10">
+      <Encabezado
+        miga={{ href: "/costos", texto: "Costos" }}
+        titulo="Desperdicio"
+        descripcion="Lo que entra a cada área menos lo bueno que sale. La merma vuelve a molienda; el rechazo es material malo."
+      />
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-xs px-3 py-1 rounded-full font-bold border ${
- porcentajeGlobal <= 5
- ? "bg-accent/10 text-accent border-accent/30"
- : porcentajeGlobal <= 8
- ? "bg-warn/10 text-warn border-warn/30"
- : "bg-danger/10 text-danger border-danger/30"
- }`}
-          >
-            Promedio Planta: {porcentajeGlobal.toFixed(1)}% Desperdicio
-          </span>
-        </div>
-      </div>
+      <Cifras
+        items={[
+          { etiqueta: "Desperdicio de planta", valor: `${formatNumero(pct(totalPlanta), 1)}%`, nota: "de lo que entra a las áreas", tono: pct(totalPlanta) > ALTO ? "danger" : undefined },
+          { etiqueta: "Merma", valor: formatKg(totalPlanta.merma, 0), nota: "recuperable" },
+          { etiqueta: "Rechazo", valor: formatKg(totalPlanta.rechazo, 0), nota: "material malo" },
+          { etiqueta: "Procesado", valor: formatKg(totalPlanta.entrada, 0), nota: "suma de las tres áreas" },
+        ]}
+      />
 
-      {/* Global Plant Scrap KPI Banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Materia Prima Ingresada</div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-fg tabular-nums">
-              {totalEntradaPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-xs font-medium text-subdued">kg</span>
-          </div>
-          <div className="mt-1 text-[11px] text-muted">Total a máquinas</div>
-        </div>
+      <Seccion titulo="Por área">
+        <Card className="mt-2 grid gap-0 py-0 sm:grid-cols-3">
+          {AREAS.map((a, i) => (
+            <div key={a} className={`px-5 py-4 ${i > 0 ? "border-t border-line sm:border-l sm:border-t-0" : ""}`}>
+              <p className="text-sm font-semibold">{AREA_NOMBRE[a]}</p>
+              <p className={`mt-1 text-[22px] font-extrabold tabular-nums ${pct(planta[a]) > ALTO ? "text-danger" : ""}`}>{formatNumero(pct(planta[a]), 1)}%</p>
+              <p className="mt-0.5 text-xs text-muted">
+                merma {formatKg(planta[a].merma, 0)} · rechazo {formatKg(planta[a].rechazo, 0)}
+              </p>
+            </div>
+          ))}
+        </Card>
+        <p className="mt-2 text-xs text-muted">En rojo, más de {ALTO}% de desperdicio.</p>
+      </Seccion>
 
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Producto Conforme (Buenos)</div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-accent tabular-nums">
-              {totalBuenosPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-xs font-medium text-subdued">kg</span>
-          </div>
-          <div className="mt-1 text-[11px] text-muted">
-            {totalEntradaPlanta > 0 ? ((totalBuenosPlanta / totalEntradaPlanta) * 100).toFixed(1) : 0}% rendimiento
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-subdued">Merma Recuperable</span>
-            <Recycle className="h-3.5 w-3.5 text-accent" />
-          </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-accent tabular-nums">
-              {totalMermaPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-xs font-medium text-subdued">kg</span>
-          </div>
-          <div className="mt-1 text-[11px] text-accent font-medium">Reutilizable en molino</div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-subdued">Rechazo / Contaminado</span>
-            <Flame className="h-3.5 w-3.5 text-danger" />
-          </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-danger tabular-nums">
-              {totalRechazadoPlanta.toLocaleString("es-BO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-xs font-medium text-subdued">kg</span>
-          </div>
-          <div className="mt-1 text-[11px] text-danger font-medium">Pérdida no recuperable</div>
-        </div>
-      </div>
-
-      {/* Orders Scrap Breakdown */}
-      <Card className="border-line shadow-sm bg-card overflow-hidden">
-        <CardHeader className="pb-3 border-b border-line">
-          <CardTitle className="text-base font-semibold text-fg">
-            Desperdicio Detallado por Orden de Trabajo
-          </CardTitle>
-          <p className="text-xs text-subdued">
-            Comparativa de pérdida en Extrusión, Impresión y Confección
-          </p>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-line">
-            {ordenes.map((ot) => {
-              const porArea = {
-                EXTRUSION: { entrada: 0, buenos: 0, merma: 0, rechazado: 0 },
-                IMPRESION: { entrada: 0, buenos: 0, merma: 0, rechazado: 0 },
-                CONFECCION: { entrada: 0, buenos: 0, merma: 0, rechazado: 0 },
-              }
-
-              for (const r of ot.registros) {
-                const a = r.area as keyof typeof porArea
-                if (porArea[a]) {
-                  porArea[a].entrada += Number(r.kgEntrada)
-                  porArea[a].buenos += Number(r.kgBuenos)
-                  porArea[a].merma += Number(r.kgMerma)
-                  porArea[a].rechazado += Number(r.kgRechazado)
-                }
-              }
-
-              const otTotalEntrada =
-                porArea.EXTRUSION.entrada +
-                porArea.IMPRESION.entrada +
-                porArea.CONFECCION.entrada
-              const otTotalDesp =
-                porArea.EXTRUSION.merma +
-                porArea.EXTRUSION.rechazado +
-                porArea.IMPRESION.merma +
-                porArea.IMPRESION.rechazado +
-                porArea.CONFECCION.merma +
-                porArea.CONFECCION.rechazado
-
-              const pctTotal =
-                otTotalEntrada > 0 ? (otTotalDesp / otTotalEntrada) * 100 : 0
-
-              const isAlarm = pctTotal > 8
-
-              return (
-                <div key={ot.id} className="p-4 space-y-3 hover:bg-elevated/50 transition">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-info bg-info/10 px-2 py-0.5 rounded-md border border-info/30">
-                          OT #{ot.numero}
-                        </span>
-                        <h3 className="text-sm font-bold text-fg">
-                          {ot.producto}
-                        </h3>
-                        {ot.medida && (
-                          <span className="text-xs text-subdued">
-                            ({ot.medida})
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-subdued mt-0.5">
-                        Cliente: <strong>{ot.cliente.nombre}</strong> • Pedido: {Number(ot.kgPedidos).toFixed(2)} kg
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <div
-                          className={`text-sm font-bold tabular-nums ${
- isAlarm ? "text-danger" : "text-fg"
- }`}
-                        >
-                          {otTotalDesp.toFixed(2)} kg ({pctTotal.toFixed(1)}%)
-                        </div>
-                        <div className="text-[11px] text-muted">Total desperdicio</div>
-                      </div>
-
-                      <Link href={`/costos/por-ot/${ot.id}`}>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs text-info hover:text-info">
-                          Detalle <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* 3 Area Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    {(
-                      [
-                        { area: "EXTRUSION", label: "Extrusión", color: "amber" },
-                        { area: "IMPRESION", label: "Impresión Flexo", color: "blue" },
-                        { area: "CONFECCION", label: "Confección / Corte", color: "emerald" },
-                      ] as const
-                    ).map(({ area, label, color }) => {
-                      const d = porArea[area]
-                      const despArea = d.merma + d.rechazado
-                      const pctArea = d.entrada > 0 ? (despArea / d.entrada) * 100 : 0
-
-                      return (
-                        <div
-                          key={area}
-                          className="p-3 rounded-xl border border-line bg-card space-y-1.5 shadow-2xs"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-fg">{label}</span>
-                            <span
-                              className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
- pctArea <= 5
- ? "bg-accent/10 text-accent"
- : pctArea <= 8
- ? "bg-warn/10 text-warn"
- : "bg-danger/10 text-danger"
- }`}
-                            >
-                              {pctArea.toFixed(1)}%
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-1 text-[11px] text-subdued pt-1 border-t border-line">
-                            <div>
-                              Ent: <strong className="text-subdued">{d.entrada.toFixed(1)}</strong>
-                            </div>
-                            <div>
-                              Buen: <strong className="text-accent">{d.buenos.toFixed(1)}</strong>
-                            </div>
-                            <div>
-                              Merm: <strong className="text-accent">{d.merma.toFixed(1)}</strong>
-                            </div>
-                            <div>
-                              Rech: <strong className="text-danger">{d.rechazado.toFixed(1)}</strong>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-
-            {ordenes.length === 0 && (
-              <div className="p-8 text-center text-sm text-subdued">
-                No hay órdenes de trabajo con registros de producción
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <Seccion titulo="Por orden" cuenta={filas.length}>
+        {filas.length === 0 ? (
+          <Vacio>Todavía no hay producción registrada.</Vacio>
+        ) : (
+          <ul>
+            {filas.map(({ ot, porArea, total }) => (
+              <li key={ot.id}>
+                <Link href={`/costos/por-ot/${ot.id}`} className="group flex items-start justify-between gap-4 border-b border-line py-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-[15px] group-hover:text-brand-ink">
+                      OT {ot.refExterna ?? `#${ot.numero}`} · {ot.producto}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] text-subdued">
+                      {ot.cliente.nombre} ·{" "}
+                      {AREAS.filter((a) => porArea[a].entrada > 0)
+                        .map((a) => `${AREA_NOMBRE[a]} ${formatNumero(pct(porArea[a]), 1)}%`)
+                        .join(" · ")}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className={`block font-bold tabular-nums ${pct(total) > ALTO ? "text-danger" : ""}`}>{formatNumero(pct(total), 1)}%</span>
+                    <span className="block text-xs text-muted">{formatKg(total.merma + total.rechazo, 1)}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Seccion>
     </div>
   )
 }

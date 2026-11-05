@@ -6,6 +6,7 @@ import { ajusteSchema, entradaSchema, salidaSchema, materialSchema } from "@/lib
 import { revalidatePath } from "next/cache"
 import { fail } from "@/lib/action-result"
 import { TipoMovimiento, CategoriaMaterial, Prisma } from "@prisma/client"
+import { avisarMovimiento } from "@/lib/avisos"
 
 type Tx = Prisma.TransactionClient
 
@@ -48,18 +49,22 @@ export async function crearMaterial(formData: FormData) {
 
   const { nombre, categoria, unidad, stockMinimo, costoPromedio } = parsed.data
 
+  const existe = await prisma.material.findFirst({ where: { nombre: { equals: nombre.trim(), mode: "insensitive" } }, select: { id: true } })
+  if (existe) return fail("Ya existe un material con ese nombre")
+
   const nuevo = await prisma.material.create({
     data: {
-      nombre,
+      nombre: nombre.trim(),
       categoria: categoria as CategoriaMaterial,
-      unidad: unidad || "kg",
+      unidad: unidad?.trim() || "kg",
       stockMinimo,
       costoPromedio,
     },
+    select: { id: true },
   })
 
   revalidatePath("/inventario")
-  return nuevo
+  return { ok: true as const, id: nuevo.id }
 }
 
 export async function registrarEntrada(formData: FormData) {
@@ -118,6 +123,8 @@ export async function registrarEntrada(formData: FormData) {
   })
 
   revalidatePath("/inventario")
+  revalidatePath(`/inventario/${materialId}`)
+  return { ok: true as const }
 }
 
 export async function registrarSalida(formData: FormData) {
@@ -147,23 +154,48 @@ export async function registrarSalida(formData: FormData) {
       return fail(`Stock insuficiente. Disponible: ${stockActual.toFixed(2)} kg`)
     }
     // El vale guarda el costo promedio vigente: el costo de la OT no cambia si después sube el precio
-    const material = await tx.material.findUnique({ where: { id: materialId }, select: { costoPromedio: true } })
-    await tx.movimientoInventario.create({
+    const material = await tx.material.findUnique({
+      where: { id: materialId },
+      select: { nombre: true, unidad: true, stockMinimo: true, costoPromedio: true },
+    })
+    if (!material) return fail("Material no encontrado")
+    const orden = ordenId
+      ? await tx.ordenTrabajo.findUnique({ where: { id: ordenId }, select: { numero: true, refExterna: true } })
+      : null
+    const movimiento = await tx.movimientoInventario.create({
       data: {
         materialId,
         tipo: TipoMovimiento.SALIDA,
         cantidad,
-        costoUnitario: material?.costoPromedio ?? null,
+        costoUnitario: material.costoPromedio,
         turno,
         motivo,
         ordenId: ordenId || null,
         userId,
       },
+      select: { id: true },
+    })
+    await avisarMovimiento(tx, {
+      movimientoId: movimiento.id,
+      materialId,
+      autorId: userId,
+      datos: {
+        tipo: "SALIDA",
+        material: material.nombre,
+        unidad: material.unidad,
+        cantidad,
+        turno,
+        motivo,
+        orden: orden ? `OT ${orden.refExterna ?? `#${orden.numero}`}` : null,
+      },
+      stock: { antes: stockActual, despues: stockActual - cantidad, minimo: Number(material.stockMinimo) },
     })
   })
   if (resultado) return resultado
 
   revalidatePath("/inventario")
+  revalidatePath(`/inventario/${materialId}`)
+  return { ok: true as const }
 }
 
 export async function registrarAjuste(formData: FormData) {
@@ -188,13 +220,16 @@ export async function registrarAjuste(formData: FormData) {
 
   const resultado = await prisma.$transaction(async (tx) => {
     await bloquearMaterial(tx, materialId)
-    if (cantidad < 0) {
-      const stockActual = await getStock(tx, materialId)
-      if (stockActual + cantidad < 0) {
-        return fail(`El ajuste dejaría el stock en negativo. Disponible: ${stockActual.toFixed(2)} kg`)
-      }
+    const stockActual = await getStock(tx, materialId)
+    if (cantidad < 0 && stockActual + cantidad < 0) {
+      return fail(`El ajuste dejaría el stock en negativo. Disponible: ${stockActual.toFixed(2)} kg`)
     }
-    await tx.movimientoInventario.create({
+    const material = await tx.material.findUnique({
+      where: { id: materialId },
+      select: { nombre: true, unidad: true, stockMinimo: true },
+    })
+    if (!material) return fail("Material no encontrado")
+    const movimiento = await tx.movimientoInventario.create({
       data: {
         materialId,
         tipo: TipoMovimiento.AJUSTE,
@@ -203,9 +238,19 @@ export async function registrarAjuste(formData: FormData) {
         motivo,
         userId,
       },
+      select: { id: true },
+    })
+    await avisarMovimiento(tx, {
+      movimientoId: movimiento.id,
+      materialId,
+      autorId: userId,
+      datos: { tipo: "AJUSTE", material: material.nombre, unidad: material.unidad, cantidad, turno, motivo },
+      stock: { antes: stockActual, despues: stockActual + cantidad, minimo: Number(material.stockMinimo) },
     })
   })
   if (resultado) return resultado
 
   revalidatePath("/inventario")
+  revalidatePath(`/inventario/${materialId}`)
+  return { ok: true as const }
 }

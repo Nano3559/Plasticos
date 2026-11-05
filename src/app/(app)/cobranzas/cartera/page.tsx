@@ -1,181 +1,99 @@
-import { formatBs } from "@/lib/formato"
-import { consultarCartera, resumirCartera } from "@/lib/cartera"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, AlertTriangle, ChevronRight, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
+import { Download } from "lucide-react"
+import { consultarCartera, resumirCartera, type RangoAntiguedad } from "@/lib/cartera"
+import { formatBs } from "@/lib/formato"
+import { Button } from "@/components/ui/button"
+import { Cifras } from "@/components/ui/cifras"
+import { Encabezado } from "@/components/ui/encabezado"
+import { VacioTodoOk } from "@/components/ui/fila-tarea"
 
 export const dynamic = "force-dynamic"
 
+const RANGOS: { clave: RangoAntiguedad; texto: string; clase: string }[] = [
+  { clave: "0-15", texto: "0–15 días", clase: "" },
+  { clave: "16-30", texto: "16–30", clase: "" },
+  { clave: "31-60", texto: "31–60", clase: "text-warn" },
+  { clave: "60+", texto: "Más de 60", clase: "text-danger" },
+]
+
 export default async function CarteraPage() {
-  // Mismo cálculo que el dashboard, los reportes y la exportación a Excel
-  const clientes = await consultarCartera()
-  const resumen = resumirCartera(clientes)
-  const clientesConDeuda = clientes.filter((c) => c.saldo > 0.5).sort((a, b) => b.saldo - a.saldo)
-  const totalCarteraVigente = resumen.totalPorCobrar
-  const totalMoraCritica = resumen.totalEnMora
+  const cartera = await consultarCartera()
+  const r = resumirCartera(cartera)
+  const con = cartera.filter((c) => c.saldo > 0.5).sort((a, b) => b.saldoPorRango["60+"] - a.saldoPorRango["60+"] || b.saldo - a.saldo)
+  const totalRango = (k: RangoAntiguedad) => con.reduce((s, c) => s + c.saldoPorRango[k], 0)
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/cobranzas">
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0 rounded-lg">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-fg">
-              Antigüedad de Deuda & Cartera
-            </h1>
-            <p className="text-xs sm:text-sm text-subdued">
-              Vencimiento de notas de remisión en rangos de 15, 30, 60 y más de 60 días
-            </p>
-          </div>
-        </div>
-
-        <Link href="/cobranzas/kardex">
-          <Button size="sm" variant="outline" className="text-xs gap-1.5 font-semibold">
-            <FileSpreadsheet className="h-4 w-4 text-info" />
-            <span>Kardex por Cliente</span>
+    <div className="space-y-8">
+      <Encabezado
+        miga={{ href: "/cobranzas", texto: "Cobranzas" }}
+        titulo="Cartera por antigüedad"
+        descripcion="Los pagos se aplican primero a las entregas más antiguas; lo que queda se ordena por días desde la entrega."
+        acciones={
+          <Button asChild variant="outline" size="sm">
+            <a href="/api/export/cartera" download>
+              <Download /> Excel
+            </a>
           </Button>
-        </Link>
-      </div>
+        }
+      />
 
-      {/* KPI Ribbon */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Saldo Total en Cartera</div>
-          <div className="mt-1 text-2xl font-bold text-fg tabular-nums">
-            {formatBs(totalCarteraVigente)}
-          </div>
-          <div className="mt-1 text-[11px] text-muted">
-            {clientesConDeuda.length} clientes con saldo
-          </div>
+      <Cifras
+        items={[
+          { etiqueta: "Por cobrar", valor: formatBs(r.totalPorCobrar, 0), nota: `${r.clientesConDeuda} clientes` },
+          { etiqueta: "31–60 días", valor: formatBs(totalRango("31-60"), 0), tono: totalRango("31-60") > 0.5 ? "warn" : undefined },
+          { etiqueta: "Más de 60 días", valor: formatBs(totalRango("60+"), 0), tono: totalRango("60+") > 0.5 ? "danger" : undefined },
+          { etiqueta: "Al día", valor: String(cartera.length - con.length), nota: "clientes sin saldo" },
+        ]}
+      />
+
+      {con.length === 0 ? (
+        <VacioTodoOk>Ningún cliente tiene saldo pendiente.</VacioTodoOk>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-subdued">
+                <th className="py-2 pr-3 font-medium">Cliente</th>
+                {RANGOS.map((g) => (
+                  <th key={g.clave} className="py-2 pr-3 text-right font-medium">
+                    {g.texto}
+                  </th>
+                ))}
+                <th className="py-2 text-right font-medium">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {con.map((c) => (
+                <tr key={c.cliente.id} className="hover:bg-elevated">
+                  <td className="py-2.5 pr-3">
+                    <Link href={`/cobranzas/cliente/${c.cliente.id}`} className="font-semibold hover:text-brand-ink hover:underline">
+                      {c.cliente.nombre}
+                    </Link>
+                    <span className="block text-xs text-muted">crédito de {c.cliente.diasCredito} días</span>
+                  </td>
+                  {RANGOS.map((g) => (
+                    <td key={g.clave} className={`py-2.5 pr-3 text-right tabular-nums ${c.saldoPorRango[g.clave] > 0.5 ? g.clase : "text-muted"}`}>
+                      {c.saldoPorRango[g.clave] > 0.5 ? formatBs(c.saldoPorRango[g.clave], 0) : "—"}
+                    </td>
+                  ))}
+                  <td className="py-2.5 text-right font-bold tabular-nums">{formatBs(c.saldo)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-line font-bold">
+                <td className="py-2.5 pr-3">Total</td>
+                {RANGOS.map((g) => (
+                  <td key={g.clave} className={`py-2.5 pr-3 text-right tabular-nums ${g.clase}`}>
+                    {formatBs(totalRango(g.clave), 0)}
+                  </td>
+                ))}
+                <td className="py-2.5 text-right tabular-nums">{formatBs(r.totalPorCobrar)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
-
-        <div className="p-3.5 rounded-xl border border-danger/30 bg-danger/10 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-danger">Mora Crítica (&gt; 30 días)</span>
-            <AlertTriangle className="h-4 w-4 text-danger" />
-          </div>
-          <div className="mt-1 text-2xl font-bold text-danger tabular-nums">
-            {formatBs(totalMoraCritica)}
-          </div>
-          <div className="mt-1 text-[11px] text-danger font-medium">Requiere gestión de cobro</div>
-        </div>
-
-        <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl border border-line bg-card shadow-xs">
-          <div className="text-[11px] font-medium text-subdued">Clientes Totales</div>
-          <div className="mt-1 text-2xl font-bold text-fg tabular-nums">
-            {clientes.length}
-          </div>
-          <div className="mt-1 text-[11px] text-muted">
-            {clientes.length - clientesConDeuda.length} al día (saldo 0)
-          </div>
-        </div>
-      </div>
-
-      {/* Debt Aging Table */}
-      <Card className="border-line shadow-sm bg-card overflow-hidden">
-        <CardHeader className="pb-3 border-b border-line flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold text-fg">
-            Clientes con Saldo Pendiente
-          </CardTitle>
-          <div className="hidden sm:flex items-center gap-3 text-[11px] text-subdued font-medium">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-accent" /> 0-15 d
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-warn" /> 16-30 d
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-warn" /> 31-60 d
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-danger" /> &gt; 60 d
-            </span>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <div className="divide-y divide-line">
-            {clientesConDeuda.map((c) => {
-              const d0_15 = Math.max(0, c.saldoPorRango["0-15"])
-              const d16_30 = Math.max(0, c.saldoPorRango["16-30"])
-              const d31_60 = Math.max(0, c.saldoPorRango["31-60"])
-              const d60plus = Math.max(0, c.saldoPorRango["60+"])
-
-              return (
-                <Link
-                  key={c.cliente.id}
-                  href={`/cobranzas/kardex?clienteId=${c.cliente.id}`}
-                  className="group block p-4 hover:bg-elevated/70 transition space-y-2.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-fg group-hover:text-info transition">
-                        {c.cliente.nombre}
-                      </h3>
-                      <p className="text-xs text-subdued">
-                        Plazo acordado: {c.cliente.diasCredito} días • Total entregado: {formatBs(c.totalEntregado)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <div className="text-base font-bold text-fg tabular-nums">
-                          {formatBs(c.saldo)}
-                        </div>
-                        <div className="text-[11px] text-muted">Saldo por cobrar</div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-subdued group-hover:text-subdued group-hover:translate-x-0.5 transition" />
-                    </div>
-                  </div>
-
-                  {/* 4 Buckets Breakdown */}
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <div className="p-1.5 rounded-lg border border-accent/30 bg-accent/10">
-                      <div className="text-[10px] font-semibold text-accent">0 - 15 días</div>
-                      <div className="text-xs font-bold text-accent tabular-nums mt-0.5">
-                        {formatBs(d0_15, 0)}
-                      </div>
-                    </div>
-
-                    <div className="p-1.5 rounded-lg border border-warn/30 bg-warn/10">
-                      <div className="text-[10px] font-semibold text-warn">16 - 30 días</div>
-                      <div className="text-xs font-bold text-warn tabular-nums mt-0.5">
-                        {formatBs(d16_30, 0)}
-                      </div>
-                    </div>
-
-                    <div className="p-1.5 rounded-lg border border-warn/30 bg-warn/10">
-                      <div className="text-[10px] font-semibold text-warn">31 - 60 días</div>
-                      <div className="text-xs font-bold text-warn tabular-nums mt-0.5">
-                        {formatBs(d31_60, 0)}
-                      </div>
-                    </div>
-
-                    <div className={`p-1.5 rounded-lg border ${d60plus > 0 ? "border-danger/30 bg-danger/10 text-danger" : "border-line bg-elevated text-subdued"}`}>
-                      <div className="text-[10px] font-semibold">Más de 60 días</div>
-                      <div className="text-xs font-bold tabular-nums mt-0.5">
-                        {formatBs(d60plus, 0)}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
-
-            {clientesConDeuda.length === 0 && (
-              <div className="p-8 text-center text-sm text-subdued">
-                ¡Excelente! Todos los clientes se encuentran al día con sus pagos.
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      )}
     </div>
   )
 }

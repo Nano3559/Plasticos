@@ -1,272 +1,235 @@
-import { EstadoOrden } from "@/components/ui/estado-orden"
-import { formatBs } from "@/lib/formato"
-import { prisma } from "@/lib/prisma"
-import { auth } from "@/auth"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Layers, Printer, Scissors, Clock, Sparkles, PlusCircle } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Plus } from "lucide-react"
+import { prisma } from "@/lib/prisma"
+import { getSessionUser } from "@/lib/session"
 import { cambiarEstadoOrden } from "@/actions/produccion"
+import { kgBuenosFinales } from "@/lib/costos"
+import { formatKg, formatNumero, formatPrecio } from "@/lib/formato"
+import { AREA_NOMBRE, TURNO_ETIQUETA } from "@/lib/etiquetas"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Cifras } from "@/components/ui/cifras"
+import { Encabezado } from "@/components/ui/encabezado"
+import { EstadoOrden } from "@/components/ui/estado-orden"
+import { Seccion } from "@/components/ui/seccion"
+
+export const dynamic = "force-dynamic"
+
+const AREAS = ["EXTRUSION", "IMPRESION", "CONFECCION"] as const
+const fechaHora = (d: Date) =>
+  d.toLocaleString("es-BO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/La_Paz" }).replace(".", "")
+const fecha = (d: Date) => d.toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).replace(".", "")
 
 export default async function DetalleOrdenPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = await auth()
-  const rol = session?.user?.rol
+  const user = await getSessionUser()
+  const gestiona = user?.rol === "ADMIN" || user?.rol === "GERENCIA"
 
   const ot = await prisma.ordenTrabajo.findUnique({
     where: { id },
     include: {
       cliente: true,
-      registros: {
-        include: { user: { select: { nombre: true } } },
+      registros: { include: { user: { select: { nombre: true } } }, orderBy: { createdAt: "desc" } },
+      entregas: { orderBy: { fecha: "desc" } },
+      movimientos: {
+        where: { tipo: "SALIDA" },
         orderBy: { createdAt: "desc" },
+        include: { material: { select: { nombre: true, unidad: true } } },
       },
-      entregas: true,
     },
   })
-
   if (!ot) notFound()
 
-  const kgPedidos = Number(ot.kgPedidos)
-  const kgBuenos = ot.registros.reduce((acc, r) => acc + Number(r.kgBuenos), 0)
-  const kgMerma = ot.registros.reduce((acc, r) => acc + Number(r.kgMerma), 0)
-  const kgRechazado = ot.registros.reduce((acc, r) => acc + Number(r.kgRechazado), 0)
-  const porcentaje = kgPedidos > 0 ? Math.min(100, Math.round((kgBuenos / kgPedidos) * 100)) : 0
-  const restante = Math.max(0, kgPedidos - kgBuenos)
+  const pedido = Number(ot.kgPedidos)
+  const terminado = kgBuenosFinales(ot.registros)
+  const pct = pedido > 0 ? Math.min(100, Math.round((terminado / pedido) * 100)) : 0
+  const merma = ot.registros.reduce((s, r) => s + Number(r.kgMerma), 0)
+  const rechazo = ot.registros.reduce((s, r) => s + Number(r.kgRechazado), 0)
+  const entregado = ot.entregas.reduce((s, e) => s + Number(e.kgEntregados), 0)
+  const porArea = AREAS.map((a) => {
+    const regs = ot.registros.filter((r) => r.area === a)
+    return { area: a, buenos: regs.reduce((s, r) => s + Number(r.kgBuenos), 0), pesajes: regs.length }
+  })
+  const etiquetaOT = ot.refExterna ?? `#${ot.numero}`
+  const siguiente = ot.estado === "ABIERTA" ? "TERMINADA" : "ABIERTA"
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header con información principal y botón atrás */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b">
-        <div className="flex items-center gap-3">
-          <Link href="/produccion/ordenes">
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg border">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">
-                OT #{ot.numero} — {ot.producto}
-              </h1>
-              <EstadoOrden estado={ot.estado} />
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Cliente: <span className="font-semibold text-foreground">{ot.cliente.nombre}</span> • Registrada el{" "}
-              {new Date(ot.fechaIngreso).toLocaleDateString("es-BO")}
-            </p>
-          </div>
-        </div>
-
-        {/* Acciones para Admin / Gerencia / Operario */}
-        <div className="flex items-center gap-2">
-          <Link href="/produccion/registro">
-            <Button size="sm" className="gap-1.5 h-9 rounded-xl font-semibold shadow-xs">
-              <PlusCircle className="h-4 w-4" /> Registrar Turno
-            </Button>
-          </Link>
-
-          {(rol === "ADMIN" || rol === "GERENCIA") && (
-            <form
-              action={async () => {
-                "use server"
-                const nuevoEstado = ot.estado === "ABIERTA" ? "TERMINADA" : "ABIERTA"
-                await cambiarEstadoOrden(ot.id, nuevoEstado)
-              }}
-            >
-              <Button variant="outline" size="sm" className="h-9 rounded-xl text-xs font-medium">
-                {ot.estado === "ABIERTA" ? "Marcar Terminada" : "Reabrir Orden"}
+    <div className="space-y-10">
+      <Encabezado
+        miga={[
+          { href: "/produccion", texto: "Producción" },
+          { href: "/produccion/ordenes", texto: "Órdenes" },
+        ]}
+        titulo={
+          <span className="flex flex-wrap items-center gap-3">
+            OT {etiquetaOT} · {ot.producto}
+            <EstadoOrden estado={ot.estado} />
+          </span>
+        }
+        descripcion={
+          <>
+            {ot.cliente.nombre}
+            {ot.medida && ` · ${ot.medida}`} · ingresó el {fecha(ot.fechaIngreso)}
+            {gestiona && ` · ${formatPrecio(ot.precioUnitario)}/kg`}
+          </>
+        }
+        acciones={
+          <>
+            {ot.estado === "ABIERTA" && (
+              <Button asChild size="sm">
+                <Link href={`/produccion/registro?ot=${ot.id}`}>
+                  <Plus /> Registrar producción
+                </Link>
               </Button>
-            </form>
-          )}
+            )}
+            {gestiona && ot.estado !== "ENTREGADA" && terminado > entregado + 0.5 && (
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/cobranzas/entrega?ot=${ot.id}`}>Registrar entrega</Link>
+              </Button>
+            )}
+            {gestiona && ot.estado !== "ENTREGADA" && (
+              <form
+                action={async () => {
+                  "use server"
+                  await cambiarEstadoOrden(ot.id, siguiente)
+                }}
+              >
+                <Button variant="outline" size="sm">
+                  {ot.estado === "ABIERTA" ? "Marcar como producida" : "Reabrir"}
+                </Button>
+              </form>
+            )}
+          </>
+        }
+      />
+
+      {ot.mezclaNota && (
+        <p className="rounded-lg bg-elevated px-4 py-3 text-sm">
+          <span className="font-semibold">Mezcla:</span> {ot.mezclaNota}
+        </p>
+      )}
+
+      <div className="space-y-3">
+        <Cifras
+          items={[
+            { etiqueta: "Pedido", valor: formatKg(pedido, 0) },
+            { etiqueta: "Producto terminado", valor: formatKg(terminado, 1), nota: `${pct}% del pedido`, tono: pct >= 100 ? "accent" : undefined },
+            { etiqueta: "Falta", valor: formatKg(Math.max(0, pedido - terminado), 1), nota: pct >= 100 ? "Pedido completo" : undefined },
+            { etiqueta: "Entregado", valor: formatKg(entregado, 1), nota: `${ot.entregas.length} ${ot.entregas.length === 1 ? "entrega" : "entregas"}` },
+          ]}
+        />
+        <div
+          className="h-2 overflow-hidden rounded-full bg-black/[0.07]"
+          role="progressbar"
+          aria-label="Avance del pedido"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+        >
+          <div className={`h-full rounded-full ${pct >= 100 ? "bg-accent" : "bg-info"}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
 
-      {/* Tarjetas KPI de Estado de la Orden (info-card-patterns) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Kilos Pedidos</p>
-            <p className="text-2xl font-bold tracking-tight">
-              {kgPedidos.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              Precio: {formatBs(Number(ot.precioUnitario))}/kg
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Fabricados (Buenos)</p>
-            <p className="text-2xl font-bold tracking-tight text-accent">
-              {kgBuenos.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </p>
-            <p className="text-[11px] font-semibold text-accent">
-              {porcentaje}% completado
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Falta Fabricar</p>
-            <p className="text-2xl font-bold tracking-tight">
-              {restante.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {restante === 0 ? "Meta alcanzada" : "Pendiente en planta"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border shadow-xs">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Merma / Desperdicio</p>
-            <p className="text-2xl font-bold tracking-tight text-warn">
-              {kgMerma.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">kg</span>
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              Rechazos: {kgRechazado.toFixed(1)} kg
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Barra de progreso de avance general */}
-      <Card className="rounded-xl border shadow-xs p-4">
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs font-medium">
-            <span>Progreso de Fabricación de la Orden</span>
-            <span className="font-bold text-foreground">
-              {kgBuenos.toFixed(1)} / {kgPedidos.toFixed(1)} kg ({porcentaje}%)
-            </span>
-          </div>
-          <div className="w-full bg-elevated rounded-full h-3 overflow-hidden">
-            <div
-              className={`h-3 rounded-full transition-all duration-300 ${
- porcentaje >= 100 ? "bg-accent" : "bg-info"
- }`}
-              style={{ width: `${porcentaje}%` }}
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Ficha técnica del pedido */}
-      <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">Especificaciones Técnicas</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-1">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 bg-black/[0.03] rounded-xl">
-              <span className="text-muted-foreground block text-[11px]">Producto</span>
-              <span className="font-semibold text-foreground text-sm">{ot.producto}</span>
+      <Seccion titulo="Por área">
+        <Card className="mt-2 grid gap-0 py-0 sm:grid-cols-3">
+          {porArea.map((a, i) => (
+            <div key={a.area} className={`px-5 py-4 ${i > 0 ? "border-t border-line sm:border-l sm:border-t-0" : ""}`}>
+              <p className="text-sm font-semibold">{AREA_NOMBRE[a.area]}</p>
+              <p className="mt-1 text-[20px] font-extrabold tabular-nums">{formatKg(a.buenos, 1)}</p>
+              <p className="mt-0.5 text-xs text-muted">
+                {a.pesajes === 0 ? "Sin pesajes" : `${a.pesajes} ${a.pesajes === 1 ? "pesaje" : "pesajes"}`}
+              </p>
             </div>
-            <div className="p-3 bg-black/[0.03] rounded-xl">
-              <span className="text-muted-foreground block text-[11px]">Medida / Espesor</span>
-              <span className="font-semibold text-foreground text-sm">{ot.medida || "Estándar"}</span>
-            </div>
-            <div className="p-3 bg-black/[0.03] rounded-xl">
-              <span className="text-muted-foreground block text-[11px]">Fórmula / Mezcla Nota</span>
-              <span className="font-semibold text-foreground text-sm flex items-center gap-1">
-                <Sparkles className="h-3.5 w-3.5 text-warn" />
-                {ot.mezclaNota || "Sin nota de mezcla"}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          ))}
+        </Card>
+        <p className="mt-2 text-xs text-muted">
+          Merma total {formatKg(merma, 1)} · rechazo {formatKg(rechazo, 1)}
+        </p>
+      </Seccion>
 
-      {/* Historial de Turnos y Pesajes Registrados (Timeline) */}
-      <Card className="rounded-xl border shadow-xs">
-        <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">Registros de Turno en Planta ({ot.registros.length})</CardTitle>
-          <p className="text-xs text-muted-foreground">Historial de pesajes por área</p>
-        </CardHeader>
-        <CardContent className="p-4 pt-1">
-          {ot.registros.length === 0 ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">
-              <Clock className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              Aún no se han registrado turnos de producción para esta orden.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {ot.registros.map((r) => {
-                const entrada = Number(r.kgEntrada)
-                const buenos = Number(r.kgBuenos)
-                const merma = Number(r.kgMerma)
-                const rechazado = Number(r.kgRechazado)
-                const rend = entrada > 0 ? Math.round((buenos / entrada) * 100) : 0
-
-                return (
-                  <div key={r.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 ${
- r.area === "EXTRUSION"
- ? "bg-warn/10 text-warn"
- : r.area === "IMPRESION"
- ? "bg-info/10 text-info dark:text-info"
- : "bg-accent/10 text-accent dark:text-accent"
- }`}
-                        >
-                          {r.area === "EXTRUSION" ? (
-                            <Layers className="h-3 w-3" />
-                          ) : r.area === "IMPRESION" ? (
-                            <Printer className="h-3 w-3" />
-                          ) : (
-                            <Scissors className="h-3 w-3" />
-                          )}
-                          {r.area}
-                        </span>
-
-                        <span className="text-xs font-semibold text-foreground">
-                          Turno {r.turno}
-                        </span>
-
-                        <span className="text-xs text-muted-foreground">
-                          • Operario: {r.user.nombre}
-                        </span>
-                      </div>
-
-                      <p className="text-[11px] text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleString("es-BO", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                        {r.horasMaquina && ` • ${Number(r.horasMaquina)} hrs máquina`}
+      <Seccion titulo="Pesajes" cuenta={ot.registros.length}>
+        {ot.registros.length === 0 ? (
+          <p className="py-6 text-subdued">Todavía no se registró producción para esta orden.</p>
+        ) : (
+          <ul>
+            {ot.registros.map((r) => {
+              const entrada = Number(r.kgEntrada)
+              const rend = entrada > 0 ? (Number(r.kgBuenos) / entrada) * 100 : 0
+              const rech = Number(r.kgRechazado)
+              return (
+                <li key={r.id} className="flex items-start justify-between gap-4 border-b border-line py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <p className="font-semibold">
+                      {AREA_NOMBRE[r.area]} <span className="font-normal text-subdued">· turno {TURNO_ETIQUETA[r.turno].toLowerCase()}</span>
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-subdued">
+                      Entraron {formatKg(entrada, 1)} · merma {formatKg(r.kgMerma, 1)}
+                      {r.horasMaquina && ` · ${formatNumero(r.horasMaquina, 1)} h de máquina`}
+                    </p>
+                    {rech > 0 && (
+                      <p className="mt-0.5 text-[13px] font-medium text-danger">
+                        Rechazo {formatKg(rech, 1)}
+                        {r.rechazoProveedor && ` · ${r.rechazoProveedor}`}
+                        {r.rechazoLote && ` · lote ${r.rechazoLote}`}
+                        {r.rechazoMotivo && ` · ${r.rechazoMotivo}`}
                       </p>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-xs font-mono">
-                      <div>
-                        <span className="text-[10px] text-muted-foreground block">Entrada</span>
-                        <span className="font-semibold">{entrada.toFixed(1)} kg</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-accent block">Buenos</span>
-                        <span className="font-bold text-accent">{buenos.toFixed(1)} kg</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-warn block">Merma</span>
-                        <span className="font-semibold text-warn">{merma.toFixed(1)} kg</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-muted-foreground block">Rend.</span>
-                        <span className="font-bold text-foreground">{rend}%</span>
-                      </div>
-                    </div>
+                    )}
+                    <p className="mt-0.5 text-xs text-muted">
+                      {fechaHora(r.createdAt)} · {r.user.nombre}
+                    </p>
                   </div>
-                )
-              })}
-            </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-bold tabular-nums">{formatKg(r.kgBuenos, 1)}</p>
+                    <p className="text-xs text-muted">rinde {formatNumero(rend, 0)}%</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Seccion>
+
+      <div className="grid gap-10 lg:grid-cols-2">
+        <Seccion titulo="Material de almacén" cuenta={ot.movimientos.length}>
+          {ot.movimientos.length === 0 ? (
+            <p className="py-6 text-subdued">No hay vales de salida ligados a esta orden.</p>
+          ) : (
+            <ul>
+              {ot.movimientos.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0">
+                  <span className="min-w-0">
+                    <span className="block truncate">{m.material.nombre}</span>
+                    <span className="text-xs text-muted">{fechaHora(m.createdAt)}</span>
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums">
+                    {formatNumero(m.cantidad, 1)} {m.material.unidad}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
-        </CardContent>
-      </Card>
+        </Seccion>
+
+        <Seccion titulo="Entregas al cliente" cuenta={ot.entregas.length}>
+          {ot.entregas.length === 0 ? (
+            <p className="py-6 text-subdued">Todavía no se entregó nada de esta orden.</p>
+          ) : (
+            <ul>
+              {ot.entregas.map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0">
+                  <span>
+                    {fecha(e.fecha)}
+                    {e.notaRemision && <span className="text-subdued"> · N.R. {e.notaRemision}</span>}
+                    {e.bultos && <span className="text-subdued"> · {formatNumero(e.bultos, 1)} bultos</span>}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums">{formatKg(e.kgEntregados, 1)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Seccion>
+      </div>
     </div>
   )
 }

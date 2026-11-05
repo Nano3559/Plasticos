@@ -1,15 +1,18 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertCircle, PackageX, Percent } from "lucide-react"
+import { PackageX, Percent } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { registrarNotaCredito } from "@/actions/cobranzas"
 import { isActionError } from "@/lib/action-result"
-import { formatBs } from "@/lib/formato"
+import { formatBs, leerNumero, numeroParaEnviar } from "@/lib/formato"
+import { CampoNumero } from "@/components/ui/campo-numero"
+import { Encabezado } from "@/components/ui/encabezado"
+import { MensajeError } from "@/components/ui/mensaje"
+import { Selector } from "@/components/ui/selector"
 
 export type OrdenParaNota = {
   id: string
@@ -22,7 +25,6 @@ export type OrdenParaNota = {
 }
 
 const hoy = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/La_Paz" }).format(new Date())
-const selectClase = "h-11 w-full rounded-lg border border-line-strong bg-panel px-3 text-sm"
 
 export function NotaCreditoForm({
   clientes,
@@ -44,21 +46,17 @@ export function NotaCreditoForm({
 
   const delCliente = useMemo(() => ordenes.filter((o) => o.clienteId === clienteId), [ordenes, clienteId])
   const orden = delCliente.find((o) => o.id === ordenId)
-  const kgNum = Number(kg.replace(",", ".")) || 0
-  const montoCalculado = tipo === "DEVOLUCION" && orden ? Math.round(kgNum * orden.precio * 100) / 100 : Number(monto.replace(",", ".")) || 0
+  const kgNum = leerNumero(kg) || 0
+  const montoCalculado = tipo === "DEVOLUCION" && orden ? Math.round(kgNum * orden.precio * 100) / 100 : leerNumero(monto) || 0
   const excede = tipo === "DEVOLUCION" && orden ? kgNum > orden.disponibleKg + 0.005 : false
 
   return (
     <div className="max-w-2xl space-y-8">
-      <header>
-        <p className="text-sm font-medium text-subdued">
-          <Link href="/cobranzas" className="hover:text-brand-ink hover:underline">
-            Cobranzas
-          </Link>
-        </p>
-        <h1 className="mt-1 text-[26px] font-bold leading-tight sm:text-[28px]">Devolución o descuento</h1>
-        <p className="mt-1 text-subdued">Rebaja lo que el cliente debe. No cuenta como cobro: no entró plata.</p>
-      </header>
+      <Encabezado
+        miga={{ href: "/cobranzas", texto: "Cobranzas" }}
+        titulo="Devolución o descuento"
+        descripcion="Rebaja lo que el cliente debe. No cuenta como cobro: no entró plata."
+      />
 
       <form
         onSubmit={(e) => {
@@ -66,8 +64,8 @@ export function NotaCreditoForm({
           setError("")
           const fd = new FormData(e.currentTarget)
           fd.set("tipo", tipo)
-          if (kg) fd.set("kg", kg.replace(",", "."))
-          if (monto) fd.set("monto", monto.replace(",", "."))
+          if (kg) fd.set("kg", numeroParaEnviar(kg))
+          if (monto) fd.set("monto", numeroParaEnviar(monto))
           iniciar(async () => {
             const r = await registrarNotaCredito(fd)
             if (isActionError(r)) setError(r.error)
@@ -76,16 +74,11 @@ export function NotaCreditoForm({
         }}
         className="space-y-6"
       >
-        {error && (
-          <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm font-medium text-danger">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <MensajeError>{error}</MensajeError>
 
         <div className="space-y-2">
           <Label htmlFor="clienteId">Cliente</Label>
-          <select
+          <Selector
             id="clienteId"
             name="clienteId"
             required
@@ -94,7 +87,6 @@ export function NotaCreditoForm({
               setClienteId(e.target.value)
               setOrdenId("")
             }}
-            className={selectClase}
           >
             <option value="" disabled>
               Elige el cliente
@@ -104,7 +96,7 @@ export function NotaCreditoForm({
                 {c.nombre}
               </option>
             ))}
-          </select>
+          </Selector>
         </div>
 
         <fieldset>
@@ -131,14 +123,13 @@ export function NotaCreditoForm({
 
         <div className="space-y-2">
           <Label htmlFor="ordenId">{tipo === "DEVOLUCION" ? "Orden de trabajo del producto devuelto" : "Orden de trabajo (opcional)"}</Label>
-          <select
+          <Selector
             id="ordenId"
             name="ordenId"
             value={ordenId}
             onChange={(e) => setOrdenId(e.target.value)}
             required={tipo === "DEVOLUCION"}
             disabled={!clienteId}
-            className={selectClase}
           >
             <option value="">{!clienteId ? "Primero elige el cliente" : delCliente.length === 0 ? "Este cliente no tiene entregas" : "Elige la OT"}</option>
             {delCliente.map((o) => (
@@ -146,7 +137,7 @@ export function NotaCreditoForm({
                 {o.etiqueta} — {formatBs(o.precio)}/kg{tipo === "DEVOLUCION" ? ` · hasta ${o.disponibleKg.toLocaleString("es-BO")} kg` : ""}
               </option>
             ))}
-          </select>
+          </Selector>
           {orden && orden.remisiones.length > 0 && (
             <p className="text-xs text-muted">Notas de remisión de esta OT: {orden.remisiones.slice(0, 8).join(", ")}</p>
           )}
@@ -156,21 +147,13 @@ export function NotaCreditoForm({
           {tipo === "DEVOLUCION" ? (
             <div className="space-y-2">
               <Label htmlFor="kg">Kg devueltos</Label>
-              <Input
-                id="kg"
-                inputMode="decimal"
-                placeholder="13,60"
-                value={kg}
-                onChange={(e) => setKg(e.target.value)}
-                aria-invalid={excede || undefined}
-                required
-              />
+<CampoNumero id="kg" valor={kg} onCambio={setKg} unidad="kg" placeholder="13,60" aria-invalid={excede || undefined} required />
               {excede && orden && <p className="text-xs text-danger">Máximo {orden.disponibleKg.toLocaleString("es-BO")} kg para esta OT.</p>}
             </div>
           ) : (
             <div className="space-y-2">
               <Label htmlFor="monto">Monto a descontar (Bs)</Label>
-              <Input id="monto" inputMode="decimal" placeholder="150,00" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+              <CampoNumero id="monto" valor={monto} onCambio={setMonto} unidad="Bs" placeholder="150,00" required />
             </div>
           )}
           <div className="space-y-2">

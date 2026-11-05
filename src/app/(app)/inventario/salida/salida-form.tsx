@@ -1,323 +1,130 @@
 "use client"
 
-import { useTurno } from "@/lib/use-turno"
-import { useState } from "react"
+import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { registrarSalida } from "@/actions/inventario"
-import { unwrap, mensajeError } from "@/lib/action-result"
+import { isActionError } from "@/lib/action-result"
+import { formatNumero, leerNumero, numeroParaEnviar } from "@/lib/formato"
+import type { MaterialForm } from "@/lib/materiales-form"
+import { useTurno } from "@/lib/use-turno"
 import { Button } from "@/components/ui/button"
+import { CampoNumero } from "@/components/ui/campo-numero"
+import { ElegirTurno } from "@/components/ui/elegir-turno"
+import { Encabezado } from "@/components/ui/encabezado"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowUpFromLine, Check, AlertTriangle, AlertCircle, FileText } from "lucide-react"
-import Link from "next/link"
+import { MensajeError } from "@/components/ui/mensaje"
+import { Selector } from "@/components/ui/selector"
+import { ElegirMaterial } from "@/components/inventario/elegir-material"
 
-interface MaterialConStock {
-  id: string
-  nombre: string
-  categoria: string
-  unidad: string
-  stock: number
-}
-
-interface OrdenOption {
-  id: string
-  numero: number
-  producto: string
-  clienteNombre: string
-}
-
-const MOTIVOS_FRECUENTES = [
-  "Carga Extrusora 1",
-  "Carga Extrusora 2",
-  "Acondicionamiento de Mezcla (50/50)",
-  "Tinta / Solvente a Impresora",
-  "Confección / Insumos",
-  "Pruebas de Calibración",
-]
+const MOTIVOS_BASE = ["Carga extrusora", "Tinta o solvente a impresora", "Insumos de confección", "Mezcla", "Pruebas de calibración"]
 
 export function SalidaForm({
   materiales,
+  motivosUsados,
   ordenes,
+  materialInicial,
+  ordenInicial,
 }: {
-  materiales: MaterialConStock[]
-  ordenes: OrdenOption[]
+  materiales: MaterialForm[]
+  motivosUsados: string[]
+  ordenes: { id: string; etiqueta: string }[]
+  materialInicial?: string
+  ordenInicial?: string
 }) {
   const router = useRouter()
-  const [materialId, setMaterialId] = useState(materiales[0]?.id || "")
-  const [cantidad, setCantidad] = useState("")
-  const [turno, setTurno] = useTurno()
-  const [motivo, setMotivo] = useState(MOTIVOS_FRECUENTES[0])
-  const [ordenId, setOrdenId] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [pendiente, iniciar] = useTransition()
   const [error, setError] = useState("")
+  const [materialId, setMaterialId] = useState(materialInicial ?? "")
+  const [cantidad, setCantidad] = useState("")
+  const [motivo, setMotivo] = useState("")
+  const [ordenId, setOrdenId] = useState(ordenInicial ?? "")
+  const [turno, setTurno] = useTurno()
 
-  const selectedMaterial = materiales.find((m) => m.id === materialId)
-  const stockDisponible = selectedMaterial?.stock || 0
-  const cantNum = Number(cantidad) || 0
-  const excedeStock = cantNum > stockDisponible
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!materialId) {
-      setError("Selecciona un material")
-      return
-    }
-    if (cantNum <= 0) {
-      setError("La cantidad debe ser mayor a 0")
-      return
-    }
-    if (excedeStock) {
-      setError(`Stock insuficiente. Solo hay ${stockDisponible.toFixed(2)} ${selectedMaterial?.unidad || "kg"} disponibles`)
-      return
-    }
-    if (!motivo.trim()) {
-      setError("Debes indicar el motivo o destino de salida")
-      return
-    }
-
-    setLoading(true)
-    setError("")
-
-    const formData = new FormData()
-    formData.append("materialId", materialId)
-    formData.append("cantidad", cantidad)
-    formData.append("turno", turno)
-    formData.append("motivo", motivo)
-    if (ordenId) formData.append("ordenId", ordenId)
-
-    try {
-      unwrap(await registrarSalida(formData))
-      router.push("/inventario")
-      router.refresh()
-    } catch (err) {
-      setError(mensajeError(err, "Error al registrar la salida"))
-      setLoading(false)
-    }
-  }
+  const m = materiales.find((x) => x.id === materialId)
+  const cant = leerNumero(cantidad) || 0
+  const excede = !!m && cant > m.stock + 0.005
+  const sugeridos = [...new Set([...motivosUsados, ...MOTIVOS_BASE])].slice(0, 8)
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <Link href="/inventario">
-          <Button variant="ghost" size="sm" className="h-9 w-9 p-0 rounded-lg">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-fg">
-            Vale de Salida a Planta
-          </h1>
-          <p className="text-xs text-subdued">
-            Despacho de resinas, molido o tintas a las máquinas operativas
-          </p>
+    <div className="max-w-2xl space-y-8">
+      <Encabezado
+        miga={{ href: "/inventario", texto: "Inventario" }}
+        titulo="Vale de salida"
+        descripcion="Material que sale del almacén a planta. Almacén y Gerencia reciben un aviso."
+      />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          setError("")
+          const fd = new FormData()
+          fd.set("materialId", materialId)
+          fd.set("cantidad", numeroParaEnviar(cantidad))
+          fd.set("turno", turno)
+          fd.set("motivo", motivo.trim())
+          if (ordenId) fd.set("ordenId", ordenId)
+          iniciar(async () => {
+            const r = await registrarSalida(fd)
+            if (isActionError(r)) setError(r.error)
+            else {
+              router.push(`/inventario/${materialId}`)
+              router.refresh()
+            }
+          })
+        }}
+        className="space-y-6"
+      >
+        <MensajeError>{error}</MensajeError>
+        <ElegirMaterial materiales={materiales} valor={materialId} onCambio={setMaterialId} />
+        <div className="space-y-2">
+          <Label htmlFor="cantidad">Cantidad que sale</Label>
+          <CampoNumero id="cantidad" valor={cantidad} onCambio={setCantidad} unidad={m?.unidad ?? "kg"} grande placeholder="0" aria-invalid={excede || undefined} />
+          {excede && m && (
+            <p className="-mt-3 text-sm font-medium text-danger">
+              Solo hay {formatNumero(m.stock, 2)} {m.unidad} en almacén.
+            </p>
+          )}
         </div>
-      </div>
-
-      <Card className="border-line shadow-sm bg-card">
-        <CardHeader className="pb-3 border-b border-line">
-          <div className="flex items-center gap-2 text-info">
-            <div className="p-1.5 rounded-lg bg-info/10 text-info border border-info/30">
-              <ArrowUpFromLine className="h-4 w-4" />
-            </div>
-            <CardTitle className="text-base font-semibold text-fg">
-              Registrar Despacho
-            </CardTitle>
+        <div className="space-y-2">
+          <Label htmlFor="ordenId">Orden de trabajo (si es para una)</Label>
+          <Selector id="ordenId" value={ordenId} onChange={(e) => setOrdenId(e.target.value)}>
+            <option value="">Sin orden</option>
+            {ordenes.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.etiqueta}
+              </option>
+            ))}
+          </Selector>
+          <p className="text-xs text-muted">Ligarla permite calcular el costo de materia prima de la OT y saber qué lote usó.</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="motivo">Motivo o destino</Label>
+          <Input id="motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} required maxLength={120} autoComplete="off" />
+          <div className="flex flex-wrap gap-2 pt-1">
+            {sugeridos.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setMotivo(t)}
+                className={`h-9 rounded-full border px-3 text-[13px] transition ${
+                  motivo === t ? "border-brand bg-brand-soft text-brand-ink" : "border-line text-subdued hover:bg-elevated"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-5">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Material Selector with live stock badge */}
-            <div className="space-y-1.5">
-              <Label htmlFor="materialId" className="text-xs font-semibold text-subdued">
-                Material a Despachar *
-              </Label>
-              <select
-                id="materialId"
-                value={materialId}
-                onChange={(e) => setMaterialId(e.target.value)}
-                className="w-full h-11 rounded-lg border border-line bg-card px-3 text-sm focus:border-info/60 focus:outline-none"
-                required
-              >
-                {materiales.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    [{m.categoria}] {m.nombre} — Stock: {m.stock.toFixed(2)} {m.unidad}
-                  </option>
-                ))}
-              </select>
-
-              {selectedMaterial && (
-                <div
-                  className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
- stockDisponible <= 0
- ? "bg-danger/10 border-danger/30 text-danger"
- : "bg-elevated border-line text-subdued"
- }`}
-                >
-                  <span>Stock disponible en bodega:</span>
-                  <span className="font-bold tabular-nums">
-                    {stockDisponible.toFixed(2)} {selectedMaterial.unidad}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Turno */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-subdued">
-                Turno Operativo *
-              </Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["MANANA", "TARDE", "NOCHE"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTurno(t)}
-                    className={`h-10 rounded-lg text-xs font-semibold transition border ${
- turno === t
- ? "bg-brand text-on-brand border-brand shadow-xs"
- : "bg-card text-subdued border-line hover:bg-elevated"
- }`}
-                  >
-                    Turno {t === "MANANA" ? "Mañana" : t === "TARDE" ? "Tarde" : "Noche"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Cantidad Input */}
-            <div className="space-y-2">
-              <Label htmlFor="cantidad" className="text-xs font-semibold text-subdued">
-                Cantidad a Entregar ({selectedMaterial?.unidad || "kg"}) *
-              </Label>
-              <div className="relative">
-                <Input
-                  id="cantidad"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={cantidad}
-                  onChange={(e) => setCantidad(e.target.value)}
-                  required
-                  className={`h-12 text-lg font-bold pr-12 ${
- excedeStock
- ? "border-danger/60 text-danger focus:border-danger/60"
- : "text-fg focus:border-info/60"
- }`}
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
-                  {selectedMaterial?.unidad || "kg"}
-                </span>
-              </div>
-
-              {excedeStock && (
-                <div className="text-xs text-danger flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>
-                    La cantidad supera el stock en bodega ({stockDisponible.toFixed(2)} {selectedMaterial?.unidad}).
-                  </span>
-                </div>
-              )}
-
-              {/* Quick presets that fit within stock */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-muted">Pre-establecidos:</span>
-                {[25, 50, 100, 200].map((kg) => (
-                  <button
-                    key={kg}
-                    type="button"
-                    onClick={() => setCantidad(kg.toString())}
-                    className="text-xs px-2.5 py-1 rounded-md bg-highlight hover:bg-info/10 hover:text-info font-semibold text-subdued border border-line transition"
-                  >
-                    {kg} kg
-                  </button>
-                ))}
-                {stockDisponible > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCantidad(stockDisponible.toString())}
-                    className="text-xs px-2.5 py-1 rounded-md bg-info/10 text-info font-semibold border border-info/30 hover:bg-info/15 transition"
-                  >
-                    Todo el stock ({stockDisponible.toFixed(2)} kg)
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Motivo / Destino */}
-            <div className="space-y-1.5">
-              <Label htmlFor="motivo" className="text-xs font-semibold text-subdued">
-                Destino / Motivo de Salida *
-              </Label>
-              <Input
-                id="motivo"
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
-                placeholder="ej. Alimentación extrusora 1, mezcla con reciclado"
-                required
-                className="h-10 text-sm"
-              />
-              <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                {MOTIVOS_FRECUENTES.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMotivo(m)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-highlight hover:bg-highlight text-subdued transition"
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Orden de Trabajo Vinculada */}
-            <div className="space-y-1.5">
-              <Label htmlFor="ordenId" className="text-xs font-semibold text-subdued flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-muted" />
-                Vincular a Orden de Trabajo (Opcional)
-              </Label>
-              <select
-                id="ordenId"
-                value={ordenId}
-                onChange={(e) => setOrdenId(e.target.value)}
-                className="w-full h-10 rounded-lg border border-line bg-card px-3 text-sm focus:border-info/60 focus:outline-none"
-              >
-                <option value="">Sin vincular a OT específica</option>
-                {ordenes.map((ot) => (
-                  <option key={ot.id} value={ot.id}>
-                    OT-{ot.numero} • {ot.producto} ({ot.clienteNombre})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {error && (
-              <div className="rounded-lg bg-danger/10 border border-danger/30 p-3 text-xs text-danger flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              disabled={loading || excedeStock}
-              className="w-full h-12 bg-brand hover:bg-brand-hover text-on-brand font-semibold text-sm shadow-sm transition gap-2"
-            >
-              {loading ? (
-                <span>Despachando...</span>
-              ) : (
-                <>
-                  <Check className="h-4 w-4" />
-                  <span>Confirmar Despacho a Planta</span>
-                </>
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+        <ElegirTurno valor={turno} onCambio={setTurno} />
+        <div className="flex gap-2">
+          <Button type="submit" disabled={pendiente || !materialId || !(cant > 0) || excede || !motivo.trim()}>
+            {pendiente ? "Guardando…" : "Registrar salida"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => router.back()}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
     </div>
   )
 }

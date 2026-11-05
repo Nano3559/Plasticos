@@ -1,524 +1,354 @@
 "use client"
 
-import { useTurno } from "@/lib/use-turno"
-import { useState, useMemo } from "react"
+import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { CheckCircle2, Layers, PackageX, Printer, Scissors, AlertCircle } from "lucide-react"
 import { registrarProduccion } from "@/actions/produccion"
-import { unwrap, mensajeError } from "@/lib/action-result"
+import { isActionError } from "@/lib/action-result"
+import { formatKg, formatNumero, leerNumero, numeroParaEnviar, redondear } from "@/lib/formato"
+import { MOTIVOS_RECHAZO } from "@/lib/rechazos"
+import { useTurno } from "@/lib/use-turno"
 import { Button } from "@/components/ui/button"
+import { CampoNumero } from "@/components/ui/campo-numero"
+import { Encabezado } from "@/components/ui/encabezado"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useRouter } from "next/navigation"
-import {
-  ArrowLeft,
-  Scale,
-  Layers,
-  Printer,
-  Scissors,
-  Sun,
-  Sunset,
-  Moon,
-  CheckCircle2,
-  AlertCircle,
-  Wand2,
-  Clock,
-  Sparkles,
-} from "lucide-react"
-import Link from "next/link"
+import { MensajeError } from "@/components/ui/mensaje"
+import { Opciones } from "@/components/ui/opciones"
+import { ElegirTurno } from "@/components/ui/elegir-turno"
+import { Selector } from "@/components/ui/selector"
 
 interface OrdenInfo {
   id: string
   numero: number
+  refExterna?: string | null
   producto: string
   medida?: string | null
   mezclaNota?: string | null
   kgPedidos: number
   totalFabricado: number
   clienteNombre: string
+  materialesUsados: string[]
 }
 
+export type LoteOpcion = {
+  id: string
+  materialId: string
+  material: string
+  proveedor: string
+  lote: string | null
+  kg: number
+  fecha: string
+}
 
-export function RegistroForm({ ordenes }: { ordenes: OrdenInfo[] }) {
+type Area = "EXTRUSION" | "IMPRESION" | "CONFECCION"
+
+const MANUAL = "__manual"
+const fechaCorta = (iso: string) =>
+  new Date(iso).toLocaleDateString("es-BO", { day: "2-digit", month: "short", timeZone: "America/La_Paz" }).replace(".", "")
+const etiquetaLote = (l: LoteOpcion) =>
+  `${l.proveedor}${l.lote ? ` · lote ${l.lote}` : ""} · ${l.material} · ${fechaCorta(l.fecha)} (${formatKg(l.kg, 0)})`
+const n = (t: string) => leerNumero(t) || 0
+
+export function RegistroForm({ ordenes, lotes, ordenInicial }: { ordenes: OrdenInfo[]; lotes: LoteOpcion[]; ordenInicial?: string }) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const [pendiente, iniciar] = useTransition()
   const [error, setError] = useState("")
 
-  // Form State
-  const [selectedOrdenId, setSelectedOrdenId] = useState<string>(ordenes[0]?.id || "")
-  const [area, setArea] = useState<"EXTRUSION" | "IMPRESION" | "CONFECCION">("EXTRUSION")
+  const [ordenId, setOrdenId] = useState(ordenInicial ?? ordenes[0]?.id ?? "")
+  const [area, setArea] = useState<Area | "">("")
   const [turno, setTurno] = useTurno()
 
-  // Numeric weights
-  const [kgEntrada, setKgEntrada] = useState<string>("")
-  const [kgBuenos, setKgBuenos] = useState<string>("")
-  const [kgMerma, setKgMerma] = useState<string>("")
-  const [kgRechazado, setKgRechazado] = useState<string>("0")
-  const [horasMaquina, setHorasMaquina] = useState<string>("")
+  const [kgEntrada, setKgEntrada] = useState("")
+  const [kgBuenos, setKgBuenos] = useState("")
+  const [kgMerma, setKgMerma] = useState("")
+  const [kgRechazado, setKgRechazado] = useState("")
+  const [horas, setHoras] = useState("")
 
-  // Orden seleccionada actualmente
-  const selectedOrden = useMemo(() => {
-    return ordenes.find((o) => o.id === selectedOrdenId)
-  }, [ordenes, selectedOrdenId])
+  // Rechazo en extrusión: de qué lote vino y por qué
+  const [loteId, setLoteId] = useState("")
+  const [proveedorManual, setProveedorManual] = useState("")
+  const [loteManual, setLoteManual] = useState("")
+  const [motivo, setMotivo] = useState("")
+  const [nota, setNota] = useState("")
 
-  // Balance en vivo de la balanza
-  const balance = useMemo(() => {
-    const entrada = parseFloat(kgEntrada) || 0
-    const buenos = parseFloat(kgBuenos) || 0
-    const merma = parseFloat(kgMerma) || 0
-    const rechazado = parseFloat(kgRechazado) || 0
+  const orden = ordenes.find((o) => o.id === ordenId)
+  const { lotesDeOT, otrosLotes } = useMemo(() => {
+    const usados = new Set(orden?.materialesUsados ?? [])
+    return { lotesDeOT: lotes.filter((l) => usados.has(l.materialId)), otrosLotes: lotes.filter((l) => !usados.has(l.materialId)) }
+  }, [lotes, orden])
 
-    const totalSalida = buenos + merma + rechazado
-    const diff = Math.round((entrada - totalSalida) * 100) / 100
-    const esValido = entrada > 0 && Math.abs(diff) < 0.01
-
-    const rendimiento = entrada > 0 ? Math.round((buenos / entrada) * 100) : 0
-    const mermaPorc = entrada > 0 ? Math.round((merma / entrada) * 100) : 0
-
+  const b = useMemo(() => {
+    const entrada = n(kgEntrada)
+    const buenos = n(kgBuenos)
+    const merma = n(kgMerma)
+    const rechazado = n(kgRechazado)
+    const salida = buenos + merma + rechazado
+    const diff = redondear(entrada - salida)
     return {
-      entrada,
-      buenos,
-      merma,
-      rechazado,
-      totalSalida,
-      diff,
-      esValido,
-      rendimiento,
-      mermaPorc,
+      entrada, buenos, merma, rechazado, salida, diff,
+      cuadra: entrada > 0 && Math.abs(diff) < 0.01,
+      pct: (x: number) => (entrada > 0 ? Math.min(100, (x / entrada) * 100) : 0),
     }
   }, [kgEntrada, kgBuenos, kgMerma, kgRechazado])
 
-  // Auto-completar Kilos Buenos con la diferencia restante
-  function handleAutoCompletar() {
-    const entrada = parseFloat(kgEntrada) || 0
-    const merma = parseFloat(kgMerma) || 0
-    const rechazado = parseFloat(kgRechazado) || 0
-    const restante = Math.max(0, entrada - merma - rechazado)
-    setKgBuenos(restante > 0 ? restante.toFixed(2) : "0")
+  const pideRechazo = area === "EXTRUSION" && b.rechazado > 0
+  const rechazoCompleto = !pideRechazo || (!!motivo && (loteId === MANUAL ? !!proveedorManual.trim() : loteId !== ""))
+  const listo = !!ordenId && !!area && b.cuadra && rechazoCompleto
+
+  function autocompletar() {
+    const resto = Math.max(0, b.entrada - b.merma - b.rechazado)
+    setKgBuenos(formatNumero(resto, 2))
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!balance.esValido) {
-      setError("La balanza debe cuadrar exactamente: Kilos Entrada = Buenos + Merma + Rechazo.")
-      return
-    }
-
-    setLoading(true)
     setError("")
+    if (!area) return setError("Elige el área.")
+    if (!b.cuadra) return setError("La balanza no cuadra: entrada = buenos + merma + rechazo.")
+    if (!rechazoCompleto) return setError("Indica de qué lote o proveedor vino el material rechazado y el motivo.")
 
-    const formData = new FormData()
-    formData.append("ordenId", selectedOrdenId)
-    formData.append("area", area)
-    formData.append("turno", turno)
-    formData.append("kgEntrada", kgEntrada)
-    formData.append("kgBuenos", kgBuenos)
-    formData.append("kgMerma", kgMerma)
-    formData.append("kgRechazado", kgRechazado || "0")
-    if (horasMaquina) formData.append("horasMaquina", horasMaquina)
-
-    try {
-      unwrap(await registrarProduccion(formData))
-      router.push("/produccion")
-      router.refresh()
-    } catch (err) {
-      setError(mensajeError(err, "Error al registrar producción"))
-      setLoading(false)
+    const fd = new FormData()
+    fd.set("ordenId", ordenId)
+    fd.set("area", area)
+    fd.set("turno", turno)
+    fd.set("kgEntrada", numeroParaEnviar(kgEntrada))
+    fd.set("kgBuenos", numeroParaEnviar(kgBuenos))
+    fd.set("kgMerma", numeroParaEnviar(kgMerma) || "0")
+    fd.set("kgRechazado", numeroParaEnviar(kgRechazado) || "0")
+    if (horas.trim()) fd.set("horasMaquina", numeroParaEnviar(horas, 1))
+    if (pideRechazo) {
+      if (loteId === MANUAL) {
+        fd.set("rechazoProveedor", proveedorManual)
+        if (loteManual) fd.set("rechazoLote", loteManual)
+      } else fd.set("rechazoEntradaId", loteId)
+      fd.set("rechazoMotivo", motivo)
+      if (nota) fd.set("rechazoNota", nota)
     }
+    iniciar(async () => {
+      const r = await registrarProduccion(fd)
+      if (isActionError(r)) setError(r.error)
+      else {
+        router.push(`/produccion/ordenes/${ordenId}`)
+        router.refresh()
+      }
+    })
   }
 
   return (
-    <div className="space-y-5 max-w-2xl mx-auto pb-10">
-      {/* Header con botón atrás */}
-      <div className="flex items-center gap-3">
-        <Link href="/produccion">
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg border">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Registro de Producción</h1>
-          <p className="text-xs text-muted-foreground">Control de pesaje y balance por turno</p>
-        </div>
-      </div>
+    <div className="max-w-2xl space-y-8">
+      <Encabezado
+        miga={{ href: "/produccion", texto: "Producción" }}
+        titulo="Registrar producción"
+        descripcion="Pesaje de un área en tu turno. La balanza tiene que cuadrar: lo que entra = buenos + merma + rechazo."
+      />
 
-      <form onSubmit={onSubmit} className="space-y-5">
-        {/* Paso 1: Orden de Trabajo */}
-        <Card className="rounded-xl border shadow-xs">
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center justify-between">
-              <span>1. Orden de Trabajo</span>
-              <span className="text-xs font-normal text-muted-foreground">OT activa</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-3">
-            <select
-              id="ordenId"
-              value={selectedOrdenId}
-              onChange={(e) => setSelectedOrdenId(e.target.value)}
-              className="w-full h-12 rounded-xl border bg-background px-3.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-              required
-            >
-              {ordenes.length === 0 && <option value="">No hay órdenes abiertas disponibles</option>}
-              {ordenes.map((ot) => (
-                <option key={ot.id} value={ot.id}>
-                  OT #{ot.numero} — {ot.producto} ({ot.clienteNombre})
-                </option>
-              ))}
-            </select>
+      <form onSubmit={enviar} className="space-y-8">
+        <MensajeError>{error}</MensajeError>
 
-            {/* Ficha rápida de la OT seleccionada (info-card-patterns) */}
-            {selectedOrden && (
-              <div className="rounded-lg bg-black/[0.03] border p-3 text-xs space-y-2">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="font-semibold text-foreground">{selectedOrden.clienteNombre}</span>
-                    <p className="text-muted-foreground">
-                      {selectedOrden.producto} {selectedOrden.medida ? `(${selectedOrden.medida})` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-bold text-foreground">
-                      {selectedOrden.totalFabricado.toFixed(0)} / {selectedOrden.kgPedidos.toFixed(0)} kg
-                    </span>
-                    <p className="text-[10px] text-muted-foreground">Avance acumulado</p>
-                  </div>
-                </div>
-
-                {selectedOrden.mezclaNota && (
-                  <div className="pt-1.5 border-t border-border/60 flex items-center gap-1.5 text-warn">
-                    <Sparkles className="h-3 w-3 shrink-0" />
-                    <span className="text-[11px] font-medium">Mezcla: {selectedOrden.mezclaNota}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Paso 2: Selección de Área (Segmented Cards con colores semánticos) */}
-        <Card className="rounded-xl border shadow-xs">
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm font-semibold">2. Área del Proceso</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setArea("EXTRUSION")}
-                className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
- area === "EXTRUSION"
- ? "border-warn/60 bg-warn/10 text-warn shadow-xs ring-2 ring-warn/20"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Layers className="h-5 w-5" />
-                <span>Extrusión</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setArea("IMPRESION")}
-                className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
- area === "IMPRESION"
- ? "border-info/60 bg-info/10 text-info dark:text-info shadow-xs ring-2 ring-info/20"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Printer className="h-5 w-5" />
-                <span>Impresión</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setArea("CONFECCION")}
-                className={`h-20 flex flex-col items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all ${
- area === "CONFECCION"
- ? "border-accent/60 bg-accent/10 text-accent dark:text-accent shadow-xs ring-2 ring-accent/20"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Scissors className="h-5 w-5" />
-                <span>Confección</span>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Paso 3: Turno de Trabajo */}
-        <Card className="rounded-xl border shadow-xs">
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center justify-between">
-              <span>3. Turno de Trabajo</span>
-              <span className="text-xs font-normal text-muted-foreground">Horario del operario</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setTurno("MANANA")}
-                className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
- turno === "MANANA"
- ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Sun className="h-4 w-4 text-warn" />
-                <span>Mañana</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTurno("TARDE")}
-                className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
- turno === "TARDE"
- ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Sunset className="h-4 w-4 text-warn" />
-                <span>Tarde</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTurno("NOCHE")}
-                className={`h-14 flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
- turno === "NOCHE"
- ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/30"
- : "border-border hover:bg-black/[0.03] text-muted-foreground"
- }`}
-              >
-                <Moon className="h-4 w-4 text-info" />
-                <span>Noche</span>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Paso 4: Balanza y Pesajes en Vivo (status-visualization-patterns + form-patterns) */}
-        <Card className="rounded-xl border shadow-xs overflow-hidden">
-          <CardHeader className="p-4 pb-3 bg-black/[0.03] border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Scale className="h-4 w-4 text-primary" />
-                <span>4. Pesaje y Balanza de Materia Prima</span>
-              </CardTitle>
-              <span className="text-[11px] text-muted-foreground">Unidad: Kilogramos (kg)</span>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            {/* Campo 1: Kilos Entrada */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="kgEntrada" className="text-xs font-semibold">
-                  Kilos de Entrada (Materia Prima / Rollo) *
-                </Label>
-                <span className="text-[11px] text-muted-foreground">Total que ingresa a máquina</span>
-              </div>
-              <div className="relative">
-                <Input
-                  id="kgEntrada"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={kgEntrada}
-                  onChange={(e) => setKgEntrada(e.target.value)}
-                  className="h-12 text-base font-semibold pr-12 rounded-xl"
-                  required
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                  kg
+        {/* 1. Orden */}
+        <div className="space-y-2">
+          <Label htmlFor="ordenId">Orden de trabajo</Label>
+          <Selector id="ordenId" value={ordenId} onChange={(e) => setOrdenId(e.target.value)} required>
+            {ordenes.length === 0 && <option value="">No hay órdenes abiertas</option>}
+            {ordenes.map((o) => (
+              <option key={o.id} value={o.id}>
+                OT {o.refExterna ?? `#${o.numero}`} · {o.producto} · {o.clienteNombre}
+              </option>
+            ))}
+          </Selector>
+          {orden && (
+            <div className="rounded-lg bg-elevated px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span>
+                  {orden.producto}
+                  {orden.medida && <span className="text-subdued"> · {orden.medida}</span>}
+                </span>
+                <span className="tabular-nums text-subdued">
+                  {formatKg(orden.totalFabricado, 0)} de {formatKg(orden.kgPedidos, 0)}
                 </span>
               </div>
+              {orden.mezclaNota && <p className="mt-1 font-semibold text-warn">Mezcla: {orden.mezclaNota}</p>}
             </div>
+          )}
+        </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Campo 2: Kilos Buenos */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="kgBuenos" className="text-xs font-semibold text-accent dark:text-accent">
-                    Kg Buenos *
-                  </Label>
-                  {balance.entrada > 0 && balance.diff !== 0 && (
-                    <button
-                      type="button"
-                      onClick={handleAutoCompletar}
-                      className="text-[10px] text-primary hover:underline flex items-center gap-0.5 font-medium"
-                      title="Calcular automáticamente el resto"
-                    >
-                      <Wand2 className="h-2.5 w-2.5" /> Auto
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <Input
-                    id="kgBuenos"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={kgBuenos}
-                    onChange={(e) => setKgBuenos(e.target.value)}
-                    className="h-11 font-semibold pr-10 rounded-xl border-accent/40 focus:border-accent/60"
-                    required
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                    kg
-                  </span>
-                </div>
-              </div>
+        {/* 2. Área y turno */}
+        <Opciones<Area>
+          nombre="area"
+          etiqueta="Área"
+          valor={area}
+          onCambio={setArea}
+          opciones={[
+            { valor: "EXTRUSION", texto: "Extrusión", icono: Layers },
+            { valor: "IMPRESION", texto: "Impresión", icono: Printer },
+            { valor: "CONFECCION", texto: "Confección", icono: Scissors },
+          ]}
+        />
+        <ElegirTurno valor={turno} onCambio={setTurno} />
 
-              {/* Campo 3: Kilos Merma */}
-              <div className="space-y-1.5">
-                <Label htmlFor="kgMerma" className="text-xs font-semibold text-warn">
-                  Kg Merma (Scrap) *
+        {/* 3. Pesaje */}
+        <fieldset className="space-y-4">
+          <legend className="mb-2 text-sm font-semibold">Pesaje</legend>
+          <div className="space-y-2">
+            <Label htmlFor="kgEntrada">Kg que entraron a la máquina</Label>
+            <CampoNumero id="kgEntrada" valor={kgEntrada} onCambio={setKgEntrada} unidad="kg" grande placeholder="0" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="kgBuenos" className="text-accent">
+                  Buenos
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="kgMerma"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={kgMerma}
-                    onChange={(e) => setKgMerma(e.target.value)}
-                    className="h-11 font-semibold pr-10 rounded-xl border-warn/40 focus:border-warn/60"
-                    required
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                    kg
-                  </span>
-                </div>
-              </div>
-
-              {/* Campo 4: Kilos Rechazados */}
-              <div className="space-y-1.5">
-                <Label htmlFor="kgRechazado" className="text-xs font-semibold text-danger dark:text-danger">
-                  Kg Rechazado
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="kgRechazado"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={kgRechazado}
-                    onChange={(e) => setKgRechazado(e.target.value)}
-                    className="h-11 font-semibold pr-10 rounded-xl"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                    kg
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Visualizador de Balance en Vivo (Status Visualization Pattern) */}
-            <div
-              className={`rounded-xl border p-3 transition-colors ${
- balance.entrada === 0
- ? "bg-black/[0.03] border-border text-muted-foreground"
- : balance.esValido
- ? "bg-accent/10 border-accent/30 text-accent dark:text-accent"
- : "bg-warn/10 border-warn/30 text-warn"
- }`}
-            >
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  {balance.esValido ? (
-                    <CheckCircle2 className="h-4 w-4 text-accent dark:text-accent" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 text-warn" />
-                  )}
-                  <span className="font-semibold">
-                    {balance.entrada === 0
-                      ? "Ingresa los kilos de entrada para validar la balanza"
-                      : balance.esValido
-                      ? "Balanza Cuadrada al 100%"
-                      : `Descuadre de ${Math.abs(balance.diff).toFixed(2)} kg (${
- balance.diff > 0 ? "Falta asignar" : "Excede la entrada"
- })`}
-                  </span>
-                </div>
-
-                {balance.entrada > 0 && (
-                  <span className="font-mono text-xs">
-                    {balance.totalSalida.toFixed(2)} / {balance.entrada.toFixed(2)} kg
-                  </span>
+                {b.entrada > 0 && !b.cuadra && (
+                  <button type="button" onClick={autocompletar} className="text-xs font-semibold text-brand-ink hover:underline">
+                    Completar
+                  </button>
                 )}
               </div>
+              <CampoNumero id="kgBuenos" valor={kgBuenos} onCambio={setKgBuenos} unidad="kg" placeholder="0" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="kgMerma" className="text-warn">
+                Merma
+              </Label>
+              <CampoNumero id="kgMerma" valor={kgMerma} onCambio={setKgMerma} unidad="kg" placeholder="0" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="kgRechazado" className="text-danger">
+                Rechazo
+              </Label>
+              <CampoNumero id="kgRechazado" valor={kgRechazado} onCambio={setKgRechazado} unidad="kg" placeholder="0" />
+            </div>
+          </div>
 
-              {/* Barra de Distribución Visual */}
-              {balance.entrada > 0 && (
-                <div className="mt-2.5 space-y-1">
-                  <div className="w-full bg-muted-foreground/20 rounded-full h-2 overflow-hidden flex">
-                    <div
-                      className="bg-accent h-full transition-all duration-200"
-                      style={{ width: `${Math.min(100, balance.rendimiento)}%` }}
-                      title={`Buenos: ${balance.rendimiento}%`}
-                    />
-                    <div
-                      className="bg-warn h-full transition-all duration-200"
-                      style={{ width: `${Math.min(100 - balance.rendimiento, balance.mermaPorc)}%` }}
-                      title={`Merma: ${balance.mermaPorc}%`}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-muted-foreground pt-0.5">
-                    <span>
-                      Rendimiento: <strong className="text-foreground">{balance.rendimiento}%</strong>
-                    </span>
-                    <span>
-                      Merma: <strong className="text-foreground">{balance.mermaPorc}%</strong>
-                    </span>
-                  </div>
-                </div>
+          {/* Balanza en vivo */}
+          <div
+            className={`rounded-lg px-4 py-3 text-sm ${
+              b.entrada === 0 ? "bg-elevated text-subdued" : b.cuadra ? "bg-accent/10 text-accent" : "bg-warn/10 text-warn"
+            }`}
+            aria-live="polite"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 font-semibold">
+                {b.cuadra ? <CheckCircle2 className="size-4" /> : <AlertCircle className="size-4" />}
+                {b.entrada === 0
+                  ? "Escribe los kg que entraron"
+                  : b.cuadra
+                    ? "La balanza cuadra"
+                    : b.diff > 0
+                      ? `Faltan ${formatKg(b.diff)} por asignar`
+                      : `Te pasaste por ${formatKg(-b.diff)}`}
+              </span>
+              {b.entrada > 0 && (
+                <span className="tabular-nums">
+                  {formatKg(b.salida)} / {formatKg(b.entrada)}
+                </span>
               )}
             </div>
-
-            {/* Campo 5: Horas Máquina (Opcional) */}
-            <div className="space-y-1.5 pt-1">
-              <Label htmlFor="horasMaquina" className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Horas máquina trabajadas (opcional)</span>
-              </Label>
-              <Input
-                id="horasMaquina"
-                type="number"
-                step="0.1"
-                min="0"
-                inputMode="decimal"
-                placeholder="Ej. 7.5"
-                value={horasMaquina}
-                onChange={(e) => setHorasMaquina(e.target.value)}
-                className="h-10 rounded-xl text-sm"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Error Server */}
-        {error && (
-          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-center gap-2 text-xs text-destructive font-medium">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
+            {b.entrada > 0 && (
+              <>
+                <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-black/[0.07]" aria-hidden>
+                  <div className="bg-accent" style={{ width: `${b.pct(b.buenos)}%` }} />
+                  <div className="bg-warn" style={{ width: `${b.pct(b.merma)}%` }} />
+                  <div className="bg-danger" style={{ width: `${b.pct(b.rechazado)}%` }} />
+                </div>
+                <p className="mt-1.5 text-xs text-subdued">
+                  Rinde {formatNumero(b.pct(b.buenos), 0)}% · merma {formatNumero(b.pct(b.merma), 0)}%
+                  {b.rechazado > 0 && ` · rechazo ${formatNumero(b.pct(b.rechazado), 0)}%`}
+                </p>
+              </>
+            )}
           </div>
+        </fieldset>
+
+        {/* 4. Rechazo en extrusión */}
+        {pideRechazo && (
+          <fieldset className="space-y-4 rounded-lg border border-danger/30 bg-danger/5 p-4">
+            <legend className="flex items-center gap-1.5 px-1 text-sm font-semibold text-danger">
+              <PackageX className="size-4" /> ¿De dónde vino el material rechazado?
+            </legend>
+            <div className="space-y-2">
+              <Label htmlFor="loteRechazo">Lote o proveedor</Label>
+              <Selector id="loteRechazo" value={loteId} onChange={(e) => setLoteId(e.target.value)} required>
+                <option value="" disabled>
+                  Elige el lote
+                </option>
+                {lotesDeOT.length > 0 && (
+                  <optgroup label="Material entregado a esta OT">
+                    {lotesDeOT.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {etiquetaLote(l)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {otrosLotes.length > 0 && (
+                  <optgroup label={lotesDeOT.length > 0 ? "Otros lotes recientes" : "Lotes recientes"}>
+                    {otrosLotes.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {etiquetaLote(l)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <option value={MANUAL}>No está en la lista: escribir a mano</option>
+              </Selector>
+            </div>
+            {loteId === MANUAL && (
+              <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+                <div className="space-y-2">
+                  <Label htmlFor="proveedorManual">Proveedor</Label>
+                  <Input id="proveedorManual" value={proveedorManual} onChange={(e) => setProveedorManual(e.target.value)} maxLength={80} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="loteManual">Lote (opcional)</Label>
+                  <Input id="loteManual" value={loteManual} onChange={(e) => setLoteManual(e.target.value)} maxLength={40} />
+                </div>
+              </div>
+            )}
+            <fieldset>
+              <legend className="mb-2 text-sm font-semibold">Motivo</legend>
+              <div className="flex flex-wrap gap-2">
+                {MOTIVOS_RECHAZO.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMotivo(m)}
+                    aria-pressed={motivo === m}
+                    className={`h-10 rounded-full border px-3.5 text-sm font-medium transition ${
+                      motivo === m ? "border-danger bg-danger/10 text-danger" : "border-line bg-panel text-subdued hover:bg-elevated"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <Input
+              aria-label="Detalle del rechazo (opcional)"
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              placeholder="Detalle (opcional): venía mojado del camión…"
+              maxLength={300}
+            />
+          </fieldset>
         )}
 
-        {/* Botón de Envío Ergonómico (mobile-responsive-ux: Touch Target >= 48px) */}
-        <Button
-          type="submit"
-          className="w-full h-14 text-base font-bold rounded-xl shadow-sm transition-all"
-          disabled={loading || (balance.entrada > 0 && !balance.esValido)}
-        >
-          {loading ? "Guardando Registro..." : "Registrar Producción de Turno"}
-        </Button>
+        {/* 5. Horas */}
+        <div className="max-w-xs space-y-2">
+          <Label htmlFor="horas">Horas de máquina (opcional)</Label>
+          <CampoNumero id="horas" valor={horas} onCambio={setHoras} unidad="h" decimales={1} placeholder="7,5" />
+        </div>
+
+        <div className="flex gap-2">
+          <Button type="submit" size="lg" disabled={pendiente || !listo} className="flex-1 sm:flex-none">
+            {pendiente ? "Guardando…" : "Registrar producción"}
+          </Button>
+          <Button type="button" variant="ghost" size="lg" onClick={() => router.back()}>
+            Cancelar
+          </Button>
+        </div>
       </form>
     </div>
   )
