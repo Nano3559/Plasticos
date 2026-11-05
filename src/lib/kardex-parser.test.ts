@@ -186,7 +186,127 @@ describe("parseKardexBuffer", () => {
   })
 })
 
+describe("kardex reales de la planta", () => {
+  /** Membrete de la planta arriba del bloque del cliente, como en los kardex originales. */
+  function libroConMembrete(filas: Fila[]) {
+    const cab: Fila[] = Array.from({ length: 11 }, () => [])
+    cab[1] = ["PLASTICOS"]
+    cab[3] = ["C/INNOMINADA S/N ZONA CHIMBOCO SACABA"]
+    cab[4] = ["TELEFONO: 71745904"]
+    cab[5] = ["Cliente: ", "GABRIELA QUISPE-AGUA FRESQUITA"]
+    cab[6] = ["Direccion:"]
+    cab[7] = ["Telf./Celular: "]
+    const ws = XLSX.utils.aoa_to_sheet([...cab, ENCABEZADO, ...filas])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "AGUA FRESQUITA")
+    return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }))
+  }
+
+  it("no toma el teléfono de la planta como teléfono del cliente", () => {
+    const r = parseKardexBuffer(libroConMembrete([entrega("03/10/2025", "107 / 182", "Bolsa", 10, 40, 400)]), "x.xlsx")
+    expect(r.clienteNombre).toBe("GABRIELA QUISPE-AGUA FRESQUITA")
+    expect(r.telefono).toBeUndefined()
+  })
+
+  it("acomoda filas corridas: producto en «Cantidad», medida en «Producto», kg pedidos en «Medida»", () => {
+    const corrida: Fila = ["12/11/2025", "105 / 180", "Bobinas para Agua", "35,5x80", 200, "936", "12/11/2025", 116.8, 10, 40, 4672, null, 4672, null]
+    const r = parseKardexBuffer(libroConMembrete([corrida]), "x.xlsx")
+    expect(r.errores).toEqual([])
+    expect(r.movimientos[0]).toMatchObject({ detalle: "Bobinas para Agua", medida: "35,5x80", kgPedidos: 200, cargo: 4672 })
+    expect(r.avisos[0]).toMatch(/columnas corridas/)
+  })
+
+  it("avisa de una fecha fuera de orden y de una devolución anotada", () => {
+    const r = parseKardexBuffer(
+      libroConMembrete([
+        entrega("01/10/2026", "342 - 171", "Bobinas", 158.6, 40, 6344, { obs: "13,60 SE DEVOLVIO REVISAR N.R. 649" }),
+        pago("01/01/2026", "PAGO A CUENTA TRANSFERENCIA", 200),
+        pago("09/10/2026", "PAGO A CUENTA TRANSFERENCIA", 4000),
+      ]),
+      "x.xlsx"
+    )
+    expect(r.avisos.some((a) => /Fila 14 .*fuera de orden/.test(a))).toBe(true)
+    expect(r.avisos.some((a) => /SE DEVOLVIO/.test(a))).toBe(true)
+  })
+})
+
+describe("kardex reales: bultos y montos escritos a mano", () => {
+  it("acepta medios bultos («5 1/2», «2½») y no bloquea la fila por un dato de bultos raro", () => {
+    const r = parseKardexBuffer(
+      libro([
+        entrega("24/07/2025", "0025 / 102", "Bolsa para Hielo", 178.6, 40, 7144, { bultos: "5 1/2" as unknown as number }),
+        entrega("25/07/2025", "0026 / 103", "Bolsa para Hielo", 10, 40, 400, { bultos: "2½" as unknown as number }),
+        entrega("26/07/2025", "0027 / 104", "Bolsa para Hielo", 10, 40, 400, { bultos: "varios" as unknown as number }),
+      ]),
+      "x.xlsx"
+    )
+    expect(r.errores).toEqual([])
+    expect(r.movimientos.map((m) => m.bultos)).toEqual([5.5, 2.5, undefined])
+    expect(r.avisos.some((a) => /«varios» no es un número/.test(a))).toBe(true)
+  })
+
+  it("entiende «40.-» como 40", () => {
+    const r = parseKardexBuffer(libro([entrega("24/07/2025", "1", "Bolsa", 10, "40.-", null)]), "x.xlsx")
+    expect(r.errores).toEqual([])
+    expect(r.movimientos[0].cargo).toBe(400)
+  })
+})
+
+describe("devoluciones y descuentos en el kardex", () => {
+  it("una fila con kg y total negativos es una devolución que baja el saldo", () => {
+    const r = parseKardexBuffer(
+      libro([
+        entrega("27/01/2026", "169 - 1", "Bobinas", 188.6, 40, 7544),
+        entrega("30/01/2026", "169 - 1", "Bobinas devueltas", -13.6, 40, -544),
+        pago("31/01/2026", "PAGO A CUENTA EFECTIVO", 4000, 3000),
+      ]),
+      "x.xlsx"
+    )
+    expect(r.errores).toEqual([])
+    const nota = r.movimientos.find((m) => m.tipo === "NOTA")!
+    expect(nota).toMatchObject({ notaTipo: "DEVOLUCION", abono: 544, kgEntregados: 13.6, otRef: "169 - 1" })
+    expect(r.totalCreditos).toBe(544)
+    expect(r.saldoCalculado).toBe(3000)
+    expect(r.totalKg).toBe(175)
+    const plan = planificarImportacion(r, "c1")
+    expect(plan.notas).toHaveLength(1)
+    expect(plan.notas[0].ordenKey).toBe(plan.ordenes[0].key) // enlazada con la OT 169 - 1
+  })
+
+  it("una fila «DESCUENTO …» con monto en Pago a cuenta es un descuento, no un pago", () => {
+    const r = parseKardexBuffer(
+      libro([entrega("01/02/2026", "1", "Bolsa", 100, 40, 4000), pago("05/02/2026", "DESCUENTO POR PRONTO PAGO", 200, 3800)]),
+      "x.xlsx"
+    )
+    expect(r.movimientos[1]).toMatchObject({ tipo: "NOTA", notaTipo: "DESCUENTO", abono: 200 })
+    expect(r.totalAbono).toBe(0)
+    expect(r.saldoCalculado).toBe(3800)
+  })
+
+  it("«PAGO A CUENTA … DESCUENTO» sigue siendo un pago", () => {
+    const r = parseKardexBuffer(libro([pago("05/02/2026", "PAGO A CUENTA CON DESCUENTO DE NOTA", 200)]), "x.xlsx")
+    expect(r.movimientos[0].tipo).toBe("PAGO")
+  })
+
+  it("la devolución solo anotada en observaciones no se descuenta, pero se avisa", () => {
+    const r = parseKardexBuffer(libro([entrega("27/01/2026", "1", "Bobinas", 188.6, 40, 7544, { obs: "13,60 SE DEVOLVIO" })]), "x.xlsx")
+    expect(r.movimientos.map((m) => m.tipo)).toEqual(["ENTREGA"])
+    expect(r.avisos.some((a) => /SE DEVOLVIO/.test(a))).toBe(true)
+  })
+
+  it("las claves de las notas son estables al reimportar", () => {
+    const archivo = libro([entrega("30/01/2026", "1", "Devuelto", -10, 40, -400)])
+    const a = planificarImportacion(parseKardexBuffer(archivo, "x.xlsx"), "c1")
+    const b = planificarImportacion(parseKardexBuffer(archivo, "x.xlsx"), "c1")
+    expect(a.notas.map((n) => n.key)).toEqual(b.notas.map((n) => n.key))
+  })
+})
+
 describe("detectarMedioPago", () => {
+  it("«FRESQUITA CUENTA DE L.D.G.V.» es transferencia (la «A» final no forma «a cuenta»)", () => {
+    expect(detectarMedioPago("PAGO A CUENTA POR VENTA DE BOBINAS DE AGUA FRESQUITA CUENTA DE L.D.G.V. MSCZ")).toBe("TRANSFERENCIA")
+  })
+
   it("no confunde 'pago a cuenta' con transferencia", () => {
     expect(detectarMedioPago("Pago a cuenta")).toBe("OTRO")
     expect(detectarMedioPago("Pago a cuenta en efectivo")).toBe("EFECTIVO")

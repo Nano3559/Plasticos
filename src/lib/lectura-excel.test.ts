@@ -78,3 +78,16 @@ describe("parseFecha", () => {
     expect(d.getUTCHours()).toBe(12)
   })
 })
+
+describe("parseNumero: fracciones y montos a la boliviana", () => {
+  it("lee fracciones propias y descarta lo que parece fecha o N° de OT", () => {
+    expect(parseNumero("5 1/2")).toBe(5.5)
+    expect(parseNumero("1/2")).toBe(0.5)
+    expect(parseNumero("10 3/4")).toBe(10.75)
+    expect(parseNumero("5½")).toBe(5.5)
+    expect(parseNumero("40.-")).toBe(40)
+    expect(parseNumero("12/11")).toBeNull()
+    expect(parseNumero("107 / 182")).toBeNull()
+  })
+})
+

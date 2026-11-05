@@ -42,7 +42,7 @@ function Dato({ etiqueta, valor, destacado }: { etiqueta: string; valor: string;
 function TarjetaResultado({ r, importado }: { r: ResultadoArchivo; importado: boolean }) {
   const estado = ESTADO[r.estado]
   const diferencia = r.saldoExcel !== null ? Math.round((r.saldoExcel - r.saldoCalculado) * 100) / 100 : null
-  const cuadra = diferencia !== null && Math.abs(diferencia) <= Math.max(1, (r.entregas + r.pagos) * 0.05)
+  const cuadra = diferencia !== null && Math.abs(diferencia) <= Math.max(1, (r.entregas + r.pagos + r.notas) * 0.05)
 
   return (
     <li className="rounded-lg bg-elevated p-4">
@@ -74,12 +74,17 @@ function TarjetaResultado({ r, importado }: { r: ResultadoArchivo; importado: bo
           <p className="mt-3 text-sm text-subdued">
             <span className="font-semibold text-fg">{r.entregas}</span> {importado ? "entregas agregadas" : "entregas nuevas"} ·{" "}
             <span className="font-semibold text-fg">{r.pagos}</span> {importado ? "pagos agregados" : "pagos nuevos"}
+            {r.notas > 0 && (
+              <>
+                {" "}· <span className="font-semibold text-fg">{r.notas}</span> {r.notas === 1 ? "devolución o descuento" : "devoluciones o descuentos"}
+              </>
+            )}
             {r.duplicadas > 0 && <> · {r.duplicadas} ya estaban importadas</>}
           </p>
           <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Dato etiqueta="Kg entregados" valor={formatKg(r.kg)} />
             <Dato etiqueta="Entregado" valor={formatBs(r.cargo)} />
-            <Dato etiqueta="Pagado" valor={formatBs(r.abono)} />
+            <Dato etiqueta={r.creditos > 0.005 ? "Pagado (+ devoluciones)" : "Pagado"} valor={r.creditos > 0.005 ? `${formatBs(r.abono)} + ${formatBs(r.creditos)}` : formatBs(r.abono)} />
             <Dato etiqueta="Saldo de las filas" valor={formatBs(r.saldoCalculado)} />
           </dl>
           {r.saldoExcel !== null && (
@@ -219,7 +224,7 @@ export function ImportarKardex({ onCerrar }: { onCerrar: () => void }) {
   }
 
   const importables = resultados.filter((r) => r.estado === "listo")
-  const conRevision = resultados.filter((r) => r.estado === "revision" && r.entregas + r.pagos > 0)
+  const conRevision = resultados.filter((r) => r.estado === "revision" && r.entregas + r.pagos + r.notas > 0)
   const hayAlgoParaGuardar = importables.length > 0 || (permitirParcial && conRevision.length > 0)
   const importados = resultados.filter((r) => r.estado === "importado")
 

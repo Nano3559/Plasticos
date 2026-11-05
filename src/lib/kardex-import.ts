@@ -18,11 +18,14 @@ export type ResultadoArchivo = {
   /** Filas nuevas que se agregan (o se agregaron) */
   entregas: number
   pagos: number
+  /** Devoluciones y descuentos nuevos */
+  notas: number
   /** Filas que ya estaban en el sistema y se omiten */
   duplicadas: number
   kg: number
   cargo: number
   abono: number
+  creditos: number
   saldoCalculado: number
   saldoExcel: number | null
   /** Saldo del cliente en el sistema después de importar */
@@ -36,21 +39,22 @@ export type ClienteMin = { id: string; nombre: string; direccion: string | null;
 
 function vacio(archivo: string): ResultadoArchivo {
   return {
-    archivo, estado: "error", cliente: "", clienteNuevo: false, hojas: [], entregas: 0, pagos: 0, duplicadas: 0,
-    kg: 0, cargo: 0, abono: 0, saldoCalculado: 0, saldoExcel: null, saldoSistema: null, errores: [], avisos: [],
+    archivo, estado: "error", cliente: "", clienteNuevo: false, hojas: [], entregas: 0, pagos: 0, notas: 0, duplicadas: 0,
+    kg: 0, cargo: 0, abono: 0, creditos: 0, saldoCalculado: 0, saldoExcel: null, saldoSistema: null, errores: [], avisos: [],
   }
 }
 
-async function saldoDelCliente(db: Pick<typeof prisma, "entrega" | "pago">, clienteId: string) {
-  const [entregas, pagos] = await Promise.all([
+async function saldoDelCliente(db: Pick<typeof prisma, "entrega" | "pago" | "notaCredito">, clienteId: string) {
+  const [entregas, pagos, notas] = await Promise.all([
     db.entrega.findMany({
       where: { orden: { clienteId } },
       select: { kgEntregados: true, orden: { select: { precioUnitario: true } } },
     }),
     db.pago.aggregate({ where: { clienteId }, _sum: { monto: true } }),
+    db.notaCredito.aggregate({ where: { clienteId, anuladaEn: null }, _sum: { monto: true } }),
   ])
   const cargo = entregas.reduce((s, e) => s + Number(e.kgEntregados) * Number(e.orden.precioUnitario), 0)
-  return redondear(cargo - Number(pagos._sum.monto ?? 0))
+  return redondear(cargo - Number(pagos._sum.monto ?? 0) - Number(notas._sum.monto ?? 0))
 }
 
 function resumen(archivo: string, parsed: KardexParsed): ResultadoArchivo {
@@ -61,6 +65,7 @@ function resumen(archivo: string, parsed: KardexParsed): ResultadoArchivo {
     kg: parsed.totalKg,
     cargo: parsed.totalCargo,
     abono: parsed.totalAbono,
+    creditos: parsed.totalCreditos,
     saldoCalculado: parsed.saldoCalculado,
     saldoExcel: parsed.saldoExcel,
     errores: parsed.errores,
@@ -99,21 +104,25 @@ export async function procesarArchivo(
   const totalEntregas = plan0.ordenes.reduce((s, o) => s + o.entregas.length, 0)
   let entregasYa = 0
   let pagosYa = 0
+  let notasYa = 0
   if (existente) {
-    const [e, p] = await Promise.all([
+    const [e, p, n] = await Promise.all([
       prisma.entrega.count({ where: { origenKey: { in: plan0.ordenes.flatMap((o) => o.entregas.map((x) => x.key)) } } }),
       prisma.pago.count({ where: { origenKey: { in: plan0.pagos.map((x) => x.key) } } }),
+      prisma.notaCredito.count({ where: { origenKey: { in: plan0.notas.map((x) => x.key) } } }),
     ])
     entregasYa = e
     pagosYa = p
+    notasYa = n
   }
   r.entregas = totalEntregas - entregasYa
   r.pagos = plan0.pagos.length - pagosYa
-  r.duplicadas = entregasYa + pagosYa
+  r.notas = plan0.notas.length - notasYa
+  r.duplicadas = entregasYa + pagosYa + notasYa
 
   const conErrores = parsed.errores.length > 0
   if (!guardar) {
-    r.estado = conErrores ? "revision" : r.entregas + r.pagos === 0 ? "sin-cambios" : "listo"
+    r.estado = conErrores ? "revision" : r.entregas + r.pagos + r.notas === 0 ? "sin-cambios" : "listo"
     if (existente) r.saldoSistema = await saldoDelCliente(prisma, existente.id)
     return r
   }
@@ -121,7 +130,7 @@ export async function procesarArchivo(
   if (conErrores && !permitirParcial) {
     return { ...r, estado: "revision", mensaje: "No se importó: corrige las filas con error o importa solo las filas válidas." }
   }
-  if (r.entregas + r.pagos === 0) return { ...r, estado: "sin-cambios", mensaje: "Todo este archivo ya estaba importado.", saldoSistema: existente ? await saldoDelCliente(prisma, existente.id) : null }
+  if (r.entregas + r.pagos + r.notas === 0) return { ...r, estado: "sin-cambios", mensaje: "Todo este archivo ya estaba importado.", saldoSistema: existente ? await saldoDelCliente(prisma, existente.id) : null }
 
   try {
     const resultado = await prisma.$transaction(
@@ -195,6 +204,21 @@ export async function procesarArchivo(
           skipDuplicates: true,
         })
 
+        const notas = await tx.notaCredito.createMany({
+          data: plan.notas.map((n) => ({
+            clienteId: cliente!.id,
+            ordenId: n.ordenKey ? idPorClave.get(n.ordenKey) ?? null : null,
+            tipo: n.tipo,
+            fecha: n.fecha,
+            kg: n.kg ?? null,
+            monto: n.monto,
+            motivo: n.motivo,
+            notaRemision: n.notaRemision ?? null,
+            origenKey: n.key,
+          })),
+          skipDuplicates: true,
+        })
+
         // Las órdenes ya existentes pueden haber completado su entrega con las filas nuevas
         for (const o of plan.ordenes) {
           const id = idPorClave.get(o.key)!
@@ -213,6 +237,8 @@ export async function procesarArchivo(
           cliente,
           entregas: entregas.count,
           pagos: pagos.count,
+          notas: notas.count,
+          totalNotas: plan.notas.length,
           saldoSistema: await saldoDelCliente(tx, cliente.id),
           totalEntregas: plan.ordenes.reduce((s, o) => s + o.entregas.length, 0),
           totalPagos: plan.pagos.length,
@@ -227,7 +253,9 @@ export async function procesarArchivo(
       estado: "importado",
       entregas: resultado.entregas,
       pagos: resultado.pagos,
-      duplicadas: resultado.totalEntregas - resultado.entregas + (resultado.totalPagos - resultado.pagos),
+      notas: resultado.notas,
+      duplicadas:
+        resultado.totalEntregas - resultado.entregas + (resultado.totalPagos - resultado.pagos) + (resultado.totalNotas - resultado.notas),
       saldoSistema: resultado.saldoSistema,
     }
   } catch (e) {

@@ -15,6 +15,21 @@ export function parseNumero(valor: unknown): number | null {
   let s = String(valor).trim()
   if (!s) return null
 
+  // Fracciones a mano: "5 1/2", "1/2", "5½", "2 ¾" (bultos y medias bolsas)
+  const UNICODE: Record<string, number> = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3 }
+  const fr = s.match(/^(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)$/) ?? s.match(/^(\d+)?\s*()()([½¼¾⅓⅔])$/)
+  if (fr && (fr[1] !== undefined || fr[2] !== undefined || fr[4] !== undefined)) {
+    const entero = fr[1] ? Number(fr[1]) : 0
+    // Solo fracciones propias con denominador chico (1/2, 3/4, 1/8): "12/11" no es una fracción
+    const num = Number(fr[2])
+    const den = Number(fr[3])
+    const parte = fr[4] ? UNICODE[fr[4]] : den >= 2 && den <= 16 && num > 0 && num < den ? num / den : NaN
+    const n = entero + parte
+    return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null
+  }
+  // "40.-" o "40,-": forma boliviana de escribir un monto exacto
+  s = s.replace(/[.,]-$/, "")
+
   let negativo = false
   if (/^\(.*\)$/.test(s)) {
     negativo = true

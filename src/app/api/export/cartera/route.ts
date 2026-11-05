@@ -12,6 +12,7 @@ export async function GET() {
     "Días de crédito": c.cliente.diasCredito,
     "Total entregado (Bs)": c.totalEntregado,
     "Total pagado (Bs)": c.totalPagado,
+    "Devoluciones y descuentos (Bs)": c.totalCreditos,
     "Saldo por cobrar (Bs)": c.saldo,
     "Anticipo a favor (Bs)": c.aFavor,
     "0-15 días (Bs)": c.saldoPorRango["0-15"],

@@ -21,7 +21,7 @@ export type Modulo = {
 }
 
 export const MODULOS: Modulo[] = [
-  { href: "/dashboard", label: "Inicio", descripcion: "Resumen del día", icon: Home, color: "#db4035", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
+  { href: "/dashboard", label: "Inicio", descripcion: "Resumen del día", icon: Home, color: "#07899b", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { href: "/inventario", label: "Inventario", descripcion: "Materia prima y vales", icon: Package, color: "#246fe0", roles: ["ALMACEN", "ADMIN", "GERENCIA"] },
   { href: "/produccion", label: "Producción", descripcion: "Órdenes y pesajes", icon: Factory, color: "#eb8909", roles: ["OPERADOR", "ADMIN", "GERENCIA"] },
   { href: "/costos", label: "Costos", descripcion: "Costo por 100 kg", icon: Calculator, color: "#884dff", roles: ["ADMIN", "GERENCIA"] },

@@ -1,14 +1,31 @@
 "use client"
 
+import { useState } from "react"
 import { signOut } from "next-auth/react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ListChecks, LogOut, Plus } from "lucide-react"
+import { Hash, LogOut, PanelLeft, Plus, Users } from "lucide-react"
 import { ACCION_PRINCIPAL, MODULOS, ROL_LABEL, type Rol } from "./modules"
 import { TurnoChip } from "./turno-chip"
 
 function esActivo(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
+}
+
+/** Ícono de "Hoy" de Todoist: un calendario con el número del día. */
+function IconoHoy({ className = "" }: { className?: string }) {
+  const dia = new Intl.DateTimeFormat("es-BO", { timeZone: "America/La_Paz", day: "numeric" }).format(new Date())
+  return (
+    <span className={`relative inline-grid size-6 place-items-center ${className}`} aria-hidden>
+      <svg viewBox="0 0 24 24" className="absolute inset-0 size-6" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="3.5" y="4.5" width="17" height="16" rx="3" />
+        <path d="M3.5 9h17" />
+      </svg>
+      <span className="relative mt-[5px] text-[9px] font-bold leading-none tabular-nums" suppressHydrationWarning>
+        {dia}
+      </span>
+    </span>
+  )
 }
 
 export function AppShell({
@@ -19,105 +36,187 @@ export function AppShell({
   user: { name?: string | null; rol?: string }
 }) {
   const pathname = usePathname()
+  const [lateralAbierta, setLateralAbierta] = useState(true)
   const rol = (user.rol as Rol) || "OPERADOR"
   const nombre = user.name || "Usuario"
+  const inicial = nombre.trim().charAt(0).toUpperCase() || "U"
   const modulos = MODULOS.filter((m) => m.roles.includes(rol))
+  const inicio = modulos.find((m) => m.href === "/dashboard")
+  const proyectos = modulos.filter((m) => m.href !== "/dashboard")
   const accion = ACCION_PRINCIPAL[rol]
   // El botón "+" flotante solo aparece en las pantallas principales, para no tapar formularios
   const enPantallaPrincipal = MODULOS.some((m) => m.href === pathname)
 
+  const itemBase = "flex h-9 items-center gap-2.5 rounded-md px-2 text-[14px] transition-colors"
+  const itemClase = (activo: boolean) =>
+    `${itemBase} ${activo ? "bg-brand-soft font-medium text-brand-ink" : "text-fg hover:bg-black/[0.045]"}`
+
   return (
-    <div className="min-h-dvh bg-canvas text-fg">
+    <div className="min-h-dvh bg-canvas text-fg lg:flex">
       <a
         href="#contenido"
-        className="sr-only z-50 rounded-lg bg-fg px-4 py-2 font-semibold text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
+        className="sr-only z-50 rounded-md bg-fg px-4 py-2 font-semibold text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
       >
         Saltar al contenido
       </a>
 
-      {/* ── Barra superior: igual que la de todoist.com ───────────── */}
-      <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5 rounded-lg py-1 pr-2">
-            <span className="grid size-9 place-items-center rounded-[10px] bg-brand text-on-brand">
-              <ListChecks className="size-5" strokeWidth={2.5} />
-            </span>
-            <span className="text-lg font-extrabold tracking-tight">Planta</span>
-          </Link>
+      {/* ── Barra lateral: la de la app de Todoist ─────────────────── */}
+      {lateralAbierta && (
+        <aside
+          aria-label="Barra lateral"
+          className="sticky top-0 hidden h-dvh w-[280px] shrink-0 flex-col bg-sidebar lg:flex"
+        >
+          <div className="flex items-center gap-1 px-3 pb-2 pt-3">
+            <Link
+              href="/cuenta"
+              title="Mi cuenta"
+              aria-current={pathname === "/cuenta" ? "page" : undefined}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-black/[0.045]"
+            >
+              <span
+                className="grid size-[26px] shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-on-brand"
+                aria-hidden
+              >
+                {inicial}
+              </span>
+              <span className="min-w-0 leading-tight">
+                <span className="block truncate text-[14px] font-semibold">{nombre}</span>
+                <span className="block truncate text-xs text-subdued">{ROL_LABEL[rol] ?? rol}</span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="grid size-8 place-items-center rounded-md text-subdued transition-colors hover:bg-black/[0.05] hover:text-fg"
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+            >
+              <LogOut className="size-[18px]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setLateralAbierta(false)}
+              className="grid size-8 place-items-center rounded-md text-subdued transition-colors hover:bg-black/[0.05] hover:text-fg"
+              aria-label="Ocultar barra lateral"
+              title="Ocultar barra lateral"
+            >
+              <PanelLeft className="size-[18px]" />
+            </button>
+          </div>
 
-          <nav aria-label="Navegación principal" className="ml-3 hidden lg:block">
-            <ul className="flex items-center gap-1">
-              {modulos.map((m) => {
-                const activo = esActivo(pathname, m.href)
-                return (
-                  <li key={m.href}>
-                    <Link
-                      href={m.href}
-                      aria-current={activo ? "page" : undefined}
-                      className={`inline-flex h-10 items-center rounded-lg px-3.5 text-[15px] font-semibold transition-colors ${
-                        activo ? "bg-brand/10 text-brand" : "text-subdued hover:bg-black/[0.05] hover:text-fg"
-                      }`}
-                    >
-                      {m.label}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
-
-          <div className="ml-auto flex items-center gap-3">
-            <TurnoChip className="hidden xl:inline-flex" />
+          <nav aria-label="Navegación principal" className="flex-1 overflow-y-auto px-3 pb-4">
+            {/* Acción principal, como el "Añadir tarea" de Todoist */}
             <Link
               href={accion.href}
-              className="hidden h-10 items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-4 text-sm font-semibold text-on-brand transition-colors hover:bg-brand-hover lg:inline-flex"
+              className={`${itemBase} mb-1 font-semibold text-brand-ink hover:bg-black/[0.045]`}
             >
-              <Plus className="size-4" strokeWidth={2.5} />
+              <span className="grid size-6 place-items-center rounded-full bg-brand text-on-brand">
+                <Plus className="size-4" strokeWidth={2.75} />
+              </span>
               {accion.label}
             </Link>
 
-            <div className="flex items-center gap-2 border-l border-line pl-3">
-              <span
-                className="grid size-9 shrink-0 place-items-center rounded-full bg-brand/10 text-sm font-bold text-brand"
-                aria-hidden
+            {inicio && (
+              <Link
+                href={inicio.href}
+                aria-current={esActivo(pathname, inicio.href) ? "page" : undefined}
+                className={itemClase(esActivo(pathname, inicio.href))}
               >
-                {nombre.trim().charAt(0).toUpperCase() || "U"}
-              </span>
-              <div className="hidden min-w-0 leading-tight xl:block">
-                <p className="max-w-36 truncate text-sm font-semibold">{nombre}</p>
-                <p className="text-xs text-subdued">{ROL_LABEL[rol] ?? rol}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="grid size-10 place-items-center rounded-lg text-subdued transition-colors hover:bg-black/[0.05] hover:text-fg"
-                aria-label="Cerrar sesión"
-                title="Cerrar sesión"
-              >
-                <LogOut className="size-5" />
-              </button>
-            </div>
+                <IconoHoy className={esActivo(pathname, inicio.href) ? "text-brand-ink" : "text-brand"} />
+                Hoy
+              </Link>
+            )}
+
+            {proyectos.length > 0 && (
+              <>
+                <h2 className="mb-1 mt-6 px-2 text-[13px] font-semibold text-subdued">Mis módulos</h2>
+                <ul>
+                  {proyectos.map((m) => {
+                    const activo = esActivo(pathname, m.href)
+                    return (
+                      <li key={m.href}>
+                        <Link href={m.href} aria-current={activo ? "page" : undefined} className={itemClase(activo)}>
+                          <Hash className="size-[18px] shrink-0" style={{ color: m.color }} strokeWidth={2} aria-hidden />
+                          <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                          <span className="truncate text-xs text-muted">{m.descripcion}</span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+
+            {rol === "GERENCIA" && (
+              <>
+                <h2 className="mb-1 mt-6 px-2 text-[13px] font-semibold text-subdued">Administración</h2>
+                <Link href="/usuarios" aria-current={esActivo(pathname, "/usuarios") ? "page" : undefined} className={itemClase(esActivo(pathname, "/usuarios"))}>
+                  <Users className="size-[18px] shrink-0 text-subdued" aria-hidden />
+                  Usuarios
+                </Link>
+              </>
+            )}
+          </nav>
+
+          <div className="border-t border-line px-5 py-3">
+            <TurnoChip />
           </div>
-        </div>
-      </header>
+        </aside>
+      )}
 
-      <main id="contenido" className="mx-auto w-full max-w-6xl px-4 pb-32 pt-6 sm:px-6 lg:pb-16 lg:pt-10">
-        {children}
-      </main>
+      <div className="min-w-0 flex-1">
+        {/* Botón para volver a mostrar la barra lateral (escritorio) */}
+        {!lateralAbierta && (
+          <button
+            type="button"
+            onClick={() => setLateralAbierta(true)}
+            className="fixed left-3 top-3 z-40 hidden size-8 place-items-center rounded-md text-subdued transition-colors hover:bg-black/[0.05] hover:text-fg lg:grid"
+            aria-label="Mostrar barra lateral"
+            title="Mostrar barra lateral"
+          >
+            <PanelLeft className="size-[18px]" />
+          </button>
+        )}
 
-      {/* ── Móvil: botón + y pestañas inferiores ──────────────────── */}
+        {/* ── Móvil: barra superior compacta ─────────────────────────── */}
+        <header className="sticky top-0 z-40 border-b border-line bg-canvas/95 backdrop-blur lg:hidden">
+          <div className="flex h-14 items-center gap-3 px-4">
+            <Link href="/cuenta" className="flex items-center gap-2" aria-label="Mi cuenta">
+              <span className="grid size-8 place-items-center rounded-full bg-brand text-sm font-bold text-on-brand" aria-hidden>
+                {inicial}
+              </span>
+              <span className="text-[15px] font-bold">{nombre.split(" ")[0]}</span>
+            </Link>
+            <TurnoChip className="ml-auto" />
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="grid size-10 place-items-center rounded-md text-subdued hover:bg-black/[0.05] hover:text-fg"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="size-5" />
+            </button>
+          </div>
+        </header>
+
+        <main id="contenido" className="mx-auto w-full max-w-5xl px-4 pb-32 pt-6 sm:px-8 lg:px-14 lg:pb-16 lg:pt-12">
+          {children}
+        </main>
+      </div>
+
+      {/* ── Móvil: botón + y pestañas inferiores, como la app de Todoist ── */}
       {enPantallaPrincipal && (
         <Link
           href={accion.href}
           aria-label={accion.label}
-          className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 z-40 grid size-14 place-items-center rounded-full bg-brand text-on-brand shadow-[0_6px_18px_rgba(209,69,59,0.4)] transition-colors hover:bg-brand-hover lg:hidden"
+          className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 z-40 grid size-14 place-items-center rounded-full bg-brand text-on-brand shadow-[0_6px_18px_rgba(7,137,155,0.4)] transition-colors hover:bg-brand-hover lg:hidden"
         >
           <Plus className="size-7" strokeWidth={2.5} />
         </Link>
       )}
       <nav
         aria-label="Navegación principal"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-panel pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-sidebar pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         <ul className="flex items-stretch justify-around px-1">
           {modulos.map((m) => {
@@ -132,8 +231,12 @@ export function AppShell({
                     activo ? "font-bold text-brand" : "font-medium text-subdued"
                   }`}
                 >
-                  <Icon className="size-6" strokeWidth={activo ? 2.5 : 1.75} />
-                  <span className="max-w-full truncate">{m.label}</span>
+                  {m.href === "/dashboard" ? (
+                    <IconoHoy />
+                  ) : (
+                    <Icon className="size-6" strokeWidth={activo ? 2.25 : 1.75} />
+                  )}
+                  <span className="max-w-full truncate">{m.href === "/dashboard" ? "Hoy" : m.label}</span>
                 </Link>
               </li>
             )

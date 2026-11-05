@@ -26,6 +26,11 @@ export default async function ClienteDetallePage({
       pagos: {
         orderBy: { fecha: "desc" },
       },
+      notasCredito: {
+        where: { anuladaEn: null },
+        orderBy: { fecha: "desc" },
+        include: { orden: { select: { numero: true, refExterna: true } } },
+      },
     },
   })
 
@@ -44,7 +49,7 @@ export default async function ClienteDetallePage({
         ot: orden.numero,
         producto: orden.producto,
         notaRemision: e.notaRemision,
-        bultos: e.bultos,
+        bultos: e.bultos === null ? null : Number(e.bultos),
         kg,
         precio,
         monto,
@@ -57,7 +62,8 @@ export default async function ClienteDetallePage({
   entregas.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
   const totalPagado = cliente.pagos.reduce((sum, p) => sum + Number(p.monto), 0)
-  const saldo = Math.max(0, totalEntregado - totalPagado)
+  const totalCreditos = cliente.notasCredito.reduce((sum, n) => sum + Number(n.monto), 0)
+  const saldo = Math.max(0, totalEntregado - totalPagado - totalCreditos)
 
   return (
     <div className="space-y-6">
@@ -93,10 +99,15 @@ export default async function ClienteDetallePage({
               <span>Ver Kardex Completo</span>
             </Button>
           </Link>
-          <Link href="/cobranzas/pago">
+          <Link href={`/cobranzas/pago?clienteId=${cliente.id}`}>
             <Button size="sm" variant="outline" className="gap-1.5 text-xs text-accent border-accent/30 hover:bg-accent/10">
               <Plus className="h-3.5 w-3.5" />
               <span>Abonar</span>
+            </Button>
+          </Link>
+          <Link href={`/cobranzas/nota-credito?clienteId=${cliente.id}`}>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <span>Devolución / descuento</span>
             </Button>
           </Link>
         </div>
@@ -117,7 +128,10 @@ export default async function ClienteDetallePage({
           <div className="mt-1 text-2xl font-bold text-accent tabular-nums">
             {formatBs(totalPagado)}
           </div>
-          <div className="mt-1 text-[11px] text-muted">{cliente.pagos.length} abonos asentados</div>
+          <div className="mt-1 text-[11px] text-muted">
+            {cliente.pagos.length} abonos asentados
+            {totalCreditos > 0.005 ? ` · ${formatBs(totalCreditos)} en devoluciones y descuentos` : ""}
+          </div>
         </div>
 
         <div
@@ -173,7 +187,7 @@ export default async function ClienteDetallePage({
                     </div>
                     <div className="text-subdued">
                       {e.producto} • {e.kg.toFixed(2)} kg @ {formatBs(e.precio)}
-                      {e.bultos ? ` (${e.bultos} bultos)` : ""}
+                      {e.bultos ? ` (${e.bultos.toLocaleString("es-BO")} bultos)` : ""}
                     </div>
                   </div>
 
@@ -240,6 +254,39 @@ export default async function ClienteDetallePage({
           </CardContent>
         </Card>
       </div>
+
+      {cliente.notasCredito.length > 0 && (
+        <Card className="border-line shadow-sm bg-card overflow-hidden">
+          <CardHeader className="pb-3 border-b border-line">
+            <CardTitle className="text-base font-semibold text-fg">
+              Devoluciones y descuentos ({cliente.notasCredito.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-line">
+              {cliente.notasCredito.map((n) => (
+                <div key={n.id} className="p-3.5 flex items-center justify-between text-xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-warn bg-warn/10 px-2 py-0.5 rounded border border-warn/30">
+                        {n.tipo === "DEVOLUCION" ? "DEVOLUCIÓN" : "DESCUENTO"}
+                      </span>
+                      <span className="text-muted">{new Date(n.fecha).toLocaleDateString("es-BO", { timeZone: "UTC" })}</span>
+                    </div>
+                    <p className="text-subdued">
+                      {n.motivo}
+                      {n.kg ? ` · ${Number(n.kg).toLocaleString("es-BO")} kg` : ""}
+                      {n.orden ? ` · OT ${n.orden.refExterna ?? `#${n.orden.numero}`}` : ""}
+                      {n.notaRemision ? ` · N.R. ${n.notaRemision}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right font-bold text-warn tabular-nums">−{formatBs(Number(n.monto))}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

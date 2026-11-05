@@ -1,14 +1,20 @@
-import NextAuth, { DefaultSession } from "next-auth"
+import type { DefaultSession } from "next-auth"
+
+type Rol = "OPERADOR" | "ALMACEN" | "ADMIN" | "GERENCIA"
 
 declare module "next-auth" {
   interface User {
-    rol: "OPERADOR" | "ALMACEN" | "ADMIN" | "GERENCIA"
+    rol: Rol
+    sesionVersion?: number
+    debeCambiarClave?: boolean
   }
 
   interface Session {
     user: {
       id: string
-      rol: "OPERADOR" | "ALMACEN" | "ADMIN" | "GERENCIA"
+      rol: Rol
+      sesionVersion: number
+      debeCambiarClave: boolean
     } & DefaultSession["user"]
   }
 }
@@ -16,6 +22,8 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     id: string
-    rol: "OPERADOR" | "ALMACEN" | "ADMIN" | "GERENCIA"
+    rol: Rol
+    sesionVersion?: number
+    debeCambiarClave?: boolean
   }
 }

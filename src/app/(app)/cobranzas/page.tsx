@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Plus, Users, FileSpreadsheet, Truck, ChevronRight } from "lucide-react"
+import { BarChart3, Plus, Users, FileSpreadsheet, Truck, ChevronRight } from "lucide-react"
 
 export default async function CobranzasPage() {
   const clientes = await prisma.cliente.findMany({
@@ -22,11 +22,18 @@ export default async function CobranzasPage() {
           </p>
         </div>
 
-        <Link href="/cobranzas/kardex">
-          <Button size="sm" className="gap-1.5 h-9 rounded-xl font-semibold shadow-xs">
-            <FileSpreadsheet className="h-4 w-4" /> Ver Kardex de Clientes
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/cobranzas/resumen">
+            <Button size="sm" className="gap-1.5 h-9 font-semibold">
+              <BarChart3 className="h-4 w-4" /> Resumen y gráficos
+            </Button>
+          </Link>
+          <Link href="/cobranzas/kardex">
+            <Button size="sm" variant="outline" className="gap-1.5 h-9 font-semibold">
+              <FileSpreadsheet className="h-4 w-4" /> Kardex de clientes
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Acciones Rápidas */}

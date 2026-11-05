@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { obtenerKardexCompleto } from "@/actions/kardex"
 import { KardexView } from "./kardex-view"
+import { getSessionUser } from "@/lib/session"
 
 export default async function KardexPage({
   searchParams,
@@ -21,8 +22,11 @@ export default async function KardexPage({
     kardexData = await obtenerKardexCompleto(selectedClienteId)
   }
 
+  const user = await getSessionUser()
+
   return (
     <KardexView
+      puedeAnular={user?.rol === "GERENCIA"}
       clientes={clientes}
       selectedClienteId={selectedClienteId}
       kardexData={kardexData}

@@ -201,6 +201,8 @@ export function EntregaForm({ ordenes }: { ordenes: OrdenOption[] }) {
                 <Input
                   id="bultos"
                   type="number"
+                  step="0.5"
+                  min="0"
                   placeholder="ej. 10 paquetes"
                   value={bultos}
                   onChange={(e) => setBultos(e.target.value)}

@@ -61,6 +61,10 @@ export async function obtenerKardexCompleto(clienteId: string) {
       pagos: {
         orderBy: { fecha: "asc" },
       },
+      notasCredito: {
+        orderBy: { fecha: "asc" },
+        include: { orden: { select: { numero: true, refExterna: true } }, user: { select: { nombre: true } } },
+      },
     },
   })
 
@@ -69,7 +73,7 @@ export async function obtenerKardexCompleto(clienteId: string) {
   type ItemKardex = {
     id: string
     fecha: Date
-    tipo: "ENTREGA" | "PAGO"
+    tipo: "ENTREGA" | "PAGO" | "DEVOLUCION" | "DESCUENTO"
     documento: string
     detalle: string
     medida?: string
@@ -80,6 +84,10 @@ export async function obtenerKardexCompleto(clienteId: string) {
     abono: number
     saldo: number
     referencia?: string
+    /** Notas de crédito: id para anular, y si ya está anulada no rebaja el saldo */
+    notaId?: string
+    anulada?: boolean
+    anuladaMotivo?: string
   }
 
   const items: ItemKardex[] = []
@@ -99,7 +107,7 @@ export async function obtenerKardexCompleto(clienteId: string) {
         medida: o.medida || undefined,
         kgEntregados: kg,
         precioUnitario: precio,
-        bultos: e.bultos || undefined,
+        bultos: e.bultos ? Number(e.bultos) : undefined,
         cargo,
         abono: 0,
         saldo: 0,
@@ -123,6 +131,27 @@ export async function obtenerKardexCompleto(clienteId: string) {
     })
   }
 
+  // Devoluciones y descuentos (rebajan el saldo; las anuladas se muestran pero no cuentan)
+  for (const n of cliente.notasCredito) {
+    const anulada = !!n.anuladaEn
+    items.push({
+      id: n.id,
+      fecha: new Date(n.fecha),
+      tipo: n.tipo,
+      documento: [n.orden ? `OT ${n.orden.refExterna ?? `#${n.orden.numero}`}` : null, n.notaRemision ? `NR ${n.notaRemision}` : null]
+        .filter(Boolean)
+        .join(" • ") || (n.tipo === "DEVOLUCION" ? "Devolución" : "Descuento"),
+      detalle: `${n.motivo}${n.user ? ` · registró ${n.user.nombre}` : ""}`,
+      kgEntregados: n.kg ? -Number(n.kg) : undefined,
+      cargo: 0,
+      abono: anulada ? 0 : Number(n.monto),
+      saldo: 0,
+      notaId: n.id,
+      anulada,
+      anuladaMotivo: n.anuladaMotivo ?? undefined,
+    })
+  }
+
   // Ordenar cronológicamente
   items.sort((a, b) => a.fecha.getTime() - b.fecha.getTime())
 
@@ -130,12 +159,14 @@ export async function obtenerKardexCompleto(clienteId: string) {
   let saldoAcum = 0
   let totalCargos = 0
   let totalAbonos = 0
+  let totalCreditos = 0
   let totalKg = 0
 
   for (const it of items) {
     saldoAcum += it.cargo - it.abono
     totalCargos += it.cargo
-    totalAbonos += it.abono
+    if (it.tipo === "PAGO") totalAbonos += it.abono
+    else totalCreditos += it.abono
     if (it.kgEntregados) totalKg += it.kgEntregados
     it.saldo = Math.round(saldoAcum * 100) / 100
   }
@@ -145,6 +176,7 @@ export async function obtenerKardexCompleto(clienteId: string) {
     movimientos: items,
     totalCargos: Math.round(totalCargos * 100) / 100,
     totalAbonos: Math.round(totalAbonos * 100) / 100,
+    totalCreditos: Math.round(totalCreditos * 100) / 100,
     totalKg: Math.round(totalKg * 100) / 100,
     saldoActual: Math.round(saldoAcum * 100) / 100,
   }

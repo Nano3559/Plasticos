@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
 /*
- * Sistema visual estilo Todoist para la planta.
- * Fondo crema, tarjetas blancas, texto casi negro y un único rojo de acción (brand).
- * El verde (accent) solo significa "va bien"; ámbar, rojo oscuro y azul son estados.
+ * Sistema visual calcado de Todoist, con el rojo cambiado por celeste agua.
+ * Barra lateral beige cálido, contenido en blanco, texto casi negro y un único
+ * celeste de acción (brand). El verde (accent) solo significa "va bien";
+ * ámbar, rojo oscuro y azul son estados (prioridades P1–P3 de Todoist).
  */
 
 @custom-variant dark (&:is(.dark *));
@@ -27,6 +28,10 @@
   /* Acción y estados */
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-bright: var(--brand-bright);
+  --color-sidebar: var(--sidebar);
   --color-on-brand: var(--on-brand);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
@@ -54,49 +59,55 @@
   --color-input: var(--line-strong);
   --color-ring: var(--brand);
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 20px;
+  /* Radios cortos, como los de la app de Todoist */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+  --radius-2xl: 16px;
 }
 
 :root {
   color-scheme: light;
 
-  /* Superficies: crema cálido de fondo, blanco para las tarjetas (como las secciones de todoist.com) */
-  --canvas: #faf7f2;
+  /* Superficies: contenido en blanco, barra lateral beige (#fcfaf8 de Todoist) */
+  --canvas: #ffffff;
+  --sidebar: #fcfaf8;
   --panel: #ffffff;
   --card: #ffffff;
-  --elevated: #f4f0ea;
-  --highlight: #ebe5dc;
+  --elevated: #f5f3f0;
+  --highlight: #ece9e4;
 
-  --line: #e7e1d8;
-  --line-strong: #c9c1b5;
+  --line: #ebe8e4;
+  --line-strong: #d6d1cb;
 
-  /* Texto casi negro cálido */
+  /* Texto: los grises de Todoist */
   --fg: #202020;
-  --subdued: #5a554e;
-  --muted-text: #726c64; /* 4,9:1 sobre blanco */
+  --subdued: #5c5955;
+  --muted-text: #6f6b66; /* 5,3:1 sobre blanco */
 
-  /* Rojo Todoist: la acción principal (4,5:1 con texto blanco) */
-  --brand: #d1453b;
-  --brand-hover: #b83a31;
+  /* Celeste agua: la acción principal (4,2:1 con texto blanco, igual que el rojo #dc4c3e de Todoist) */
+  --brand: #07899b;
+  --brand-hover: #066f7e;
+  --brand-soft: #e1f5f7; /* fondo del elemento activo, como el rosado de Todoist */
+  --brand-ink: #055f6b; /* texto sobre brand-soft, 6,4:1 */
+  --brand-bright: #3cc8d6; /* solo decoración: ilustraciones, selección */
   --on-brand: #ffffff;
 
   /* Verde = "va bien" (pagado, stock sano, listo). Nunca decora. */
-  --accent: #1f7a3a;
-  --accent-hover: #196330;
+  --accent: #058527;
+  --accent-hover: #046b1f;
   --on-accent: #ffffff;
 
+  /* Prioridades de Todoist: P1 rojo, P2 naranja, P3 azul */
   --warn: #b25e09;
-  --danger: #b42318;
+  --danger: #b42318; /* rojo solo para errores y urgencias; ya no es la marca */
   --info: #246fe0;
 }
 
 html,
 body {
-  background-color: var(--base);
+  background-color: var(--canvas);
   color: var(--fg);
 }
 
@@ -107,7 +118,7 @@ body {
 }
 
 ::selection {
-  background: #f6c9c4;
+  background: #bdeef3;
   color: var(--fg);
 }
 
@@ -135,10 +146,10 @@ option {
 }
 
 
-/* Barras de desplazamiento discretas, como en Spotify */
+/* Barras de desplazamiento discretas, como en Todoist */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cfc7bb transparent;
+  scrollbar-color: #d6d1cb transparent;
 }
 *::-webkit-scrollbar {
   width: 12px;

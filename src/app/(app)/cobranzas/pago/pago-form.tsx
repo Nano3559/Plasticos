@@ -35,12 +35,14 @@ const MEDIOS_PAGO = [
 export function PagoForm({
   clientes,
   ordenes,
+  clienteInicial,
 }: {
   clientes: ClienteOption[]
   ordenes: OrdenOption[]
+  clienteInicial?: string
 }) {
   const router = useRouter()
-  const [clienteId, setClienteId] = useState(clientes[0]?.id || "")
+  const [clienteId, setClienteId] = useState(clienteInicial || clientes[0]?.id || "")
   const [ordenId, setOrdenId] = useState("")
   const [monto, setMonto] = useState("")
   const [fecha, setFecha] = useState(hoyLocal)

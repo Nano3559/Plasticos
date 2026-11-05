@@ -11,6 +11,8 @@ import { Card } from "@/components/ui/card"
 import { EstadoOrden } from "@/components/ui/estado-orden"
 import { FilaTarea, VacioTodoOk, type Prioridad } from "@/components/ui/fila-tarea"
 import { Seccion } from "@/components/ui/seccion"
+import { consultarResumen } from "@/lib/resumen-cobranzas-db"
+import { GraficoMensual } from "../cobranzas/resumen/graficos"
 
 export const dynamic = "force-dynamic"
 
@@ -70,6 +72,9 @@ export default async function DashboardPage() {
         })
       : Promise.resolve([]),
   ])
+
+  // Resumen de cobranzas de los últimos 6 meses (solo Administración y Gerencia)
+  const resumenCobros = veCobranzas ? await consultarResumen(null, 6) : null
 
   // ── Lo que hay que atender hoy ───────────────────────────────────────────
   const atencion: Atencion[] = []
@@ -166,20 +171,23 @@ export default async function DashboardPage() {
         <p className="text-sm font-medium text-subdued">
           {saludo(hora)}, {nombre}
         </p>
-        <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">Hoy</h1>
+        <h1 className="mt-1 text-[26px] font-bold leading-tight sm:text-[28px]">Hoy</h1>
         <p className="mt-1 text-subdued">
           {fecha} · turno {TURNO_NOMBRE[turnoDeHora(hora)]}
         </p>
 
         {acciones.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Acciones rápidas">
+          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1" role="group" aria-label="Acciones rápidas">
+            {/* Igual que el "+ Añadir tarea" de Todoist: el + se rellena al pasar el mouse */}
             {acciones.map((a) => (
               <Link
                 key={a.href}
                 href={a.href}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line-strong bg-panel px-3.5 text-sm font-semibold transition-colors hover:border-brand hover:text-brand"
+                className="group inline-flex h-10 items-center gap-2 rounded-md text-[14px] text-subdued transition-colors hover:text-brand-ink"
               >
-                <Plus className="size-4 text-brand" strokeWidth={2.5} />
+                <span className="grid size-[18px] place-items-center rounded-full text-brand transition-colors group-hover:bg-brand group-hover:text-on-brand">
+                  <Plus className="size-4" strokeWidth={2.5} />
+                </span>
                 {a.texto}
               </Link>
             ))}
@@ -212,6 +220,21 @@ export default async function DashboardPage() {
         ))}
       </Card>
 
+      {resumenCobros && (
+        <Seccion titulo="Cobranzas, últimos 6 meses" verTodo={{ href: "/cobranzas/resumen", texto: "Ver por cliente" }}>
+          <p className="pb-3 pt-2 text-[14px] text-subdued">
+            Falta cobrar <strong className="font-semibold text-fg tabular-nums">{formatBs(resumenCobros.porCobrar, 0)}</strong>
+            {resumenCobros.enMora > 0.5 && (
+              <>
+                {" "}· <span className="text-danger">{formatBs(resumenCobros.enMora, 0)} vencidos</span>
+              </>
+            )}{" "}
+            · cobrado en 6 meses <strong className="font-semibold text-brand-ink tabular-nums">{formatBs(resumenCobros.cobradoPeriodo, 0)}</strong>
+          </p>
+          <GraficoMensual datos={resumenCobros.serie} alto={220} />
+        </Seccion>
+      )}
+
       <div className="grid gap-10 lg:grid-cols-2">
         {veProduccion && (
           <Seccion titulo="En producción" cuenta={ordenesEnCurso.length} verTodo={{ href: "/produccion/ordenes" }}>
@@ -223,10 +246,10 @@ export default async function DashboardPage() {
                   <Link
                     key={ot.id}
                     href={`/produccion/ordenes/${ot.id}`}
-                    className="group -mx-2 block rounded-lg border-b border-line px-2 py-3 transition-colors last:border-b-0 hover:bg-black/[0.035]"
+                    className="group block border-b border-line py-3 last:border-b-0"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate font-semibold group-hover:text-brand">
+                      <span className="min-w-0 truncate text-[15px] group-hover:text-brand-ink">
                         OT #{ot.numero} · {ot.cliente.nombre}
                       </span>
                       <EstadoOrden estado={ot.estado} />

@@ -4,8 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neon con pooling: la usa la app
+  directUrl = env("DATABASE_URL_UNPOOLED") // Neon directa: la usan las migraciones
 }
 
 enum Rol {
@@ -56,9 +57,17 @@ model User {
   passwordHash String
   rol          Rol
   activo       Boolean                @default(true)
+  /// Obliga a cambiar la contraseña en el próximo ingreso (usuarios nuevos o clave restablecida)
+  debeCambiarClave Boolean            @default(false)
+  /// Sube cada vez que cambia la clave, el rol o el estado: cierra las sesiones abiertas
+  sesionVersion    Int                @default(0)
+  intentosFallidos Int                @default(0)
+  bloqueadoHasta   DateTime?
+  ultimoAcceso     DateTime?
   movimientos  MovimientoInventario[]
   registros    RegistroProduccion[]
   createdAt    DateTime               @default(now())
+  notasCredito NotaCredito[]
 }
 
 model Cliente {
@@ -70,6 +79,7 @@ model Cliente {
   diasCredito Int            @default(15)
   ordenes     OrdenTrabajo[]
   pagos       Pago[]
+  notasCredito NotaCredito[]
   createdAt   DateTime       @default(now())
 }
 
@@ -120,6 +130,7 @@ model OrdenTrabajo {
   refExterna     String?                // N° de OT tal como figura en el Excel del cliente
   registros      RegistroProduccion[]
   entregas       Entrega[]
+  notasCredito   NotaCredito[]
   movimientos    MovimientoInventario[]
 }
 
@@ -146,7 +157,7 @@ model Entrega {
   notaRemision String?
   fecha        DateTime     @default(now())
   kgEntregados Decimal      @db.Decimal(12, 2)
-  bultos       Int?
+  bultos       Decimal?     @db.Decimal(8, 2) // admite medios bultos: "5 1/2"
   origenKey    String?      @unique // clave de importación de kardex
 
   @@index([ordenId, fecha])
@@ -182,4 +193,34 @@ model CostoTurno {
   energia   Decimal  @db.Decimal(12, 2)
 
   @@unique([fecha, turno], name: "fecha_turno")
+}
+
+enum TipoNotaCredito {
+  DEVOLUCION // el cliente devolvió producto: kg × precio de la OT
+  DESCUENTO  // rebaja, bonificación o ajuste por un monto
+}
+
+/// Rebaja la deuda del cliente sin ser un pago (no entra plata). No se edita ni se borra:
+/// si se registró mal, Gerencia la anula (queda en el historial) y se registra otra.
+model NotaCredito {
+  id           String          @id @default(cuid())
+  clienteId    String
+  cliente      Cliente         @relation(fields: [clienteId], references: [id])
+  ordenId      String?
+  orden        OrdenTrabajo?   @relation(fields: [ordenId], references: [id])
+  tipo         TipoNotaCredito
+  fecha        DateTime        @default(now())
+  kg           Decimal?        @db.Decimal(12, 2) // solo DEVOLUCION
+  monto        Decimal         @db.Decimal(12, 2) // siempre positivo: lo que se descuenta
+  motivo       String
+  notaRemision String?         // N.R. a la que corresponde
+  userId       String?
+  user         User?           @relation(fields: [userId], references: [id])
+  origenKey    String?         @unique // clave de importación de kardex
+  createdAt    DateTime        @default(now())
+  /// Anulada por Gerencia: queda en el historial pero no rebaja la deuda
+  anuladaEn     DateTime?
+  anuladaMotivo String?
+
+  @@index([clienteId, fecha])
 }

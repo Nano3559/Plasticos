@@ -18,12 +18,12 @@ export function Seccion({
   return (
     <section className={className} aria-label={titulo}>
       <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-line pb-2">
-        <h2 className="text-base font-bold tracking-tight">
+        <h2 className="text-[15px] font-bold">
           {titulo}
           {cuenta !== undefined && <span className="ml-2 text-sm font-normal text-muted">{cuenta}</span>}
         </h2>
         {verTodo && (
-          <Link href={verTodo.href} className="inline-flex items-center gap-0.5 text-sm font-semibold text-brand hover:underline">
+          <Link href={verTodo.href} className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-brand-ink hover:underline">
             {verTodo.texto ?? "Ver todo"} <ChevronRight className="size-4" />
           </Link>
         )}
