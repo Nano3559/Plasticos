@@ -37,3 +37,30 @@ if (process.env.SEED_ON_DEPLOY === "true") {
 } else {
   console.log("→ SEED_ON_DEPLOY no está en \"true\": no se cargan datos iniciales")
 }
+
+// Restablece la cuenta de Gerencia con la MISMA conexión que usa la app.
+// Uso: en Vercel agrega RESET_CLAVE_GERENCIA=<contraseña temporal> y haz Redeploy.
+// Después de entrar, BORRA la variable y vuelve a desplegar.
+if (process.env.RESET_CLAVE_GERENCIA) {
+  const bcrypt = (await import("bcryptjs")).default
+  const url = new URL(process.env.DATABASE_URL)
+  console.log(`→ RESET_CLAVE_GERENCIA: restableciendo gerencia@planta.local en ${url.host}${url.pathname}`)
+  const hash = await bcrypt.hash(process.env.RESET_CLAVE_GERENCIA, 10)
+  const cliente = new pg.Client({ connectionString: process.env.DATABASE_URL })
+  await cliente.connect()
+  try {
+    await cliente.query(
+      `INSERT INTO "User" (id, nombre, email, "passwordHash", rol, activo, "debeCambiarClave")
+       VALUES (gen_random_uuid()::text, 'Gerencia', 'gerencia@planta.local', $1, 'GERENCIA', true, true)
+       ON CONFLICT (email) DO UPDATE SET
+         "passwordHash" = EXCLUDED."passwordHash", rol = 'GERENCIA', activo = true,
+         "intentosFallidos" = 0, "bloqueadoHasta" = NULL, "debeCambiarClave" = true,
+         "sesionVersion" = "User"."sesionVersion" + 1`,
+      [hash],
+    )
+    const { rows } = await cliente.query('SELECT email, rol FROM "User" ORDER BY email')
+    console.log("→ Usuarios en esta base:", rows.map((r) => `${r.email} (${r.rol})`).join(", "))
+  } finally {
+    await cliente.end()
+  }
+}
