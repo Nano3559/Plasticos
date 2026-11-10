@@ -4,17 +4,20 @@ const mocks = vi.hoisted(() => ({
   sesion: vi.fn(), analizar: vi.fn(), findOrden: vi.fn(), findParte: vi.fn(),
   findActual: vi.fn(), findVersion: vi.fn(), crearParte: vi.fn(), crearAvisos: vi.fn(),
   usuarios: vi.fn(), lock: vi.fn(), vigente: vi.fn(), revalidate: vi.fn(),
+  clientes:vi.fn(),crearCliente:vi.fn(),ordenes:vi.fn(),crearOrden:vi.fn(),
 }))
 vi.mock("@/lib/session", () => ({ getSessionUser: mocks.sesion }))
 vi.mock("@/lib/extrusion", () => ({ analizarExtrusion: mocks.analizar, metricasExtrusion: () => ({ buenos: 1008 }) }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }))
 vi.mock("@/lib/prisma", () => ({ prisma: {
-  ordenTrabajo: { findUnique: mocks.findOrden },
+  ordenTrabajo: { findUnique: mocks.findOrden,findMany:mocks.ordenes },
+  cliente:{findMany:mocks.clientes},
   parteExtrusion: { findFirst: mocks.findParte },
   $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({
     $executeRaw: mocks.lock,
     parteExtrusion: { findFirst: mocks.findActual, findUnique: mocks.findVersion, create: mocks.crearParte },
-    ordenTrabajo: { findUnique: mocks.vigente },
+    ordenTrabajo: { findUnique: mocks.vigente,findMany:mocks.ordenes,create:mocks.crearOrden },
+    cliente:{findMany:mocks.clientes,create:mocks.crearCliente},
     user: { findMany: mocks.usuarios }, notificacion: { createMany: mocks.crearAvisos },
   }),
 } }))
@@ -30,14 +33,54 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.sesion.mockResolvedValue({ id: "autor", name: "Ana", rol: "ADMIN", debeCambiarClave: false })
   mocks.findOrden.mockResolvedValue({ id: "ot-1", estado: "ABIERTA", numero: 1, refExterna: null, producto: "BOBINAS", kgPedidos: 1000, cliente: { nombre: "VARIOS" } })
-  mocks.analizar.mockReturnValue({ version: 1, hoja: "OT 1", ot: "1", cliente: "VARIOS", producto: "BOBINAS", pedido: 1000, filas: [], avisos: ["Balance por conciliar: 588 kg"] })
+  mocks.analizar.mockReturnValue({ version: 1, hoja: "OT 1", ot: "1", cliente: "VARIOS", producto: "BOBINAS", pedido: 1000, filas: [{fecha:"2026-01-08"}],ficha:{Tamaño:"35x80","Tipo de material":"BAJA - LINEAL"}, avisos: ["Balance por conciliar: 588 kg"] })
   mocks.findParte.mockResolvedValue(null)
   mocks.findActual.mockResolvedValue(null)
   mocks.findVersion.mockResolvedValue(null)
   mocks.vigente.mockResolvedValue({ estado: "ABIERTA" })
   mocks.usuarios.mockResolvedValue([{ id: "gerencia" }])
+  mocks.clientes.mockResolvedValue([])
+  mocks.ordenes.mockResolvedValue([])
+  mocks.crearCliente.mockResolvedValue({id:"cliente-nuevo",nombre:"VARIOS"})
+  mocks.crearOrden.mockResolvedValue({id:"ot-nueva",producto:"BOBINAS",kgPedidos:1000,estado:"ABIERTA"})
 })
 describe("importación de extrusión: permisos y versiones", () => {
+  it("analiza sin cliente ni OT previa y no escribe nada",async()=>{
+    const f=formulario();f.delete("ordenId")
+    expect(await importarExtrusion(f)).toMatchObject({crearOrden:true,crearCliente:true,destino:"nueva"})
+    expect(mocks.crearCliente).not.toHaveBeenCalled()
+    expect(mocks.crearOrden).not.toHaveBeenCalled()
+  })
+  it("crea cliente, OT y parte desde el Excel con el precio confirmado",async()=>{
+    const f=formulario();f.delete("ordenId")
+    const r=await importarExtrusion(f)
+    f.set("confirmar","si");f.set("huella",r.huella!);f.set("revision","");f.set("destino","nueva");f.set("precioUnitario","14,50")
+    expect(await importarExtrusion(f)).toMatchObject({ordenId:"ot-nueva",mensaje:"OT creada desde el Excel y parte importado."})
+    expect(mocks.crearCliente).toHaveBeenCalledWith({data:{nombre:"VARIOS"}})
+    expect(mocks.crearOrden).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({clienteId:"cliente-nuevo",producto:"BOBINAS",refExterna:"1",kgPedidos:1000,precioUnitario:14.5})}))
+    expect(mocks.crearParte).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({ordenId:"ot-nueva"})}))
+  })
+  it("no crea OT si falta el precio y no está en el Excel",async()=>{
+    const f=formulario();f.delete("ordenId");const r=await importarExtrusion(f)
+    f.set("confirmar","si");f.set("huella",r.huella!);f.set("destino","nueva")
+    expect(await importarExtrusion(f)).toHaveProperty("error")
+    expect(mocks.crearCliente).not.toHaveBeenCalled();expect(mocks.crearOrden).not.toHaveBeenCalled()
+  })
+  it("reutiliza cliente y OT existentes al importar automáticamente",async()=>{
+    mocks.clientes.mockResolvedValue([{id:"cliente",nombre:"VARIOS"}])
+    mocks.ordenes.mockResolvedValue([await mocks.findOrden()])
+    const f=formulario();f.delete("ordenId");const r=await importarExtrusion(f)
+    expect(r).toMatchObject({crearOrden:false,crearCliente:false,destino:"ot-1"})
+    f.set("confirmar","si");f.set("huella",r.huella!);f.set("revision","");f.set("destino","ot-1")
+    expect(await importarExtrusion(f)).toHaveProperty("mensaje")
+    expect(mocks.crearCliente).not.toHaveBeenCalled();expect(mocks.crearOrden).not.toHaveBeenCalled()
+  })
+  it("rechaza clientes ambiguos sin crear registros",async()=>{
+    const spy=vi.spyOn(console,"error").mockImplementation(()=>{})
+    mocks.clientes.mockResolvedValue([{id:"a"},{id:"b"}]);const f=formulario();f.delete("ordenId")
+    expect((await importarExtrusion(f)).error).toContain("varios clientes")
+    expect(mocks.crearOrden).not.toHaveBeenCalled();spy.mockRestore()
+  })
   it("deniega importación a operador antes de procesar el archivo", async () => {
     mocks.sesion.mockResolvedValue({ id: "u", rol: "OPERADOR" })
     expect(await importarExtrusion(formulario())).toHaveProperty("error")
