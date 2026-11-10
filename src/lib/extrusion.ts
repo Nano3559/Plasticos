@@ -18,8 +18,14 @@ function fechaExcel(v: unknown, date1904: boolean): string {
   throw new Error(`Fecha inválida: ${texto(v)}`)
 }
 export function analizarExtrusion(bytes: Uint8Array, hoja?: string): ParteExtrusionDatos {
+  return analizarParteProduccion(bytes,hoja,"EXTRUSION")
+}
+
+export function analizarParteProduccion(bytes: Uint8Array, hoja: string | undefined, area: "EXTRUSION" | "IMPRESION"): ParteExtrusionDatos {
+  const impresion=area==="IMPRESION"
+  const columnas=impresion?{turno:3,item:4,entrada:6,bobina:8,buenos:9,desperdicio:11,motivo:12,tiempo:14,inicio:11}:{turno:2,item:3,entrada:5,bobina:7,buenos:8,desperdicio:10,motivo:11,tiempo:13,inicio:17}
   const wb = XLSX.read(bytes, { type: "array", cellDates: false, sheetRows: 5010 })
-  const nombre = hoja || wb.SheetNames.find(n => /^OT\s*1$/i.test(n)) || wb.SheetNames.find(n => !/plantilla/i.test(n))
+  const nombre = hoja || wb.SheetNames.find(n => impresion?/^OT[-\s]*IMP/i.test(n):/^OT\s*\d+$/i.test(n)) || wb.SheetNames.find(n => !/plantilla/i.test(n)&&normal(wb.Sheets[n].A1?.v).includes(impresion?"IMPRESION":"EXTR"))
   if (!nombre || !wb.Sheets[nombre]) throw new Error("Selecciona una hoja de orden de trabajo existente")
   const ws = wb.Sheets[nombre]
   const rango = XLSX.utils.decode_range(ws["!ref"] || "A1")
@@ -29,27 +35,30 @@ export function analizarExtrusion(bytes: Uint8Array, hoja?: string): ParteExtrus
     if (!direccion.startsWith("!") && celda?.t === "e") throw new Error(`La celda ${direccion} tiene un error de Excel. Corrígelo antes de importar`)
   }
   const celda = (r: number, c: number) => rows[r]?.[c]
-  if (!normal(celda(0, 0)).includes("ORDEN DE TRABAJO SECCION DE EXTR")) throw new Error("El archivo no corresponde al formato de extrusión")
-  if (normal(celda(9, 5)) !== "KILOS" || normal(celda(9, 10)) !== "DESPERDICIO") throw new Error("Las columnas del template no coinciden")
+  if (!normal(celda(0, 0)).includes(impresion?"ORDEN DE TRABAJO SECCION IMPRESION":"ORDEN DE TRABAJO SECCION DE EXTR")) throw new Error(`El archivo no corresponde al formato de ${impresion?"impresión":"extrusión"}`)
+  if (normal(celda(9, columnas.entrada)) !== "KILOS" || normal(celda(9, columnas.desperdicio)) !== "DESPERDICIO") throw new Error("Las columnas del template no coinciden")
   const ficha: Record<string, string> = {}
-  for (const [etiqueta, r, c] of [["Matriz",3,1],["Ancho",3,4],["Micronaje",3,6],["Film",3,8],["Tubular",3,11],["Tipo de material",4,1],["Color",4,5],["Tratado",4,8],["Caras",4,11],["Impresión",5,2],["Confección",5,4],["Tamaño",5,6],["Gramo/metro real",5,11],["Observaciones",6,1]] as const) ficha[etiqueta] = texto(celda(r,c))
+  const campos:readonly (readonly [string,number,number])[]=impresion
+    ?[["Rodillo",3,1],["Ancho",3,3],["Largo",3,5],["Micronaje",3,7],["Film",3,9],["Tubular",3,11],["Tratado",3,13],["Tipo de material",4,1],["Color",4,5],["Destino",4,7],["Tamaño",4,9],["Colores",4,11],["Caras",4,13],["Observaciones",5,1]]
+    :[["Matriz",3,1],["Ancho",3,4],["Micronaje",3,6],["Film",3,8],["Tubular",3,11],["Tipo de material",4,1],["Color",4,5],["Tratado",4,8],["Caras",4,11],["Impresión",5,2],["Confección",5,4],["Tamaño",5,6],["Gramo/metro real",5,11],["Observaciones",6,1]]
+  for (const [etiqueta,r,c] of campos) ficha[etiqueta]=texto(celda(r,c))
   const filas: FilaExtrusion[] = []
   let fecha = "", operador = "", turno = ""
   const bobinas = new Set<string>()
-  for (let i = 17; i < rows.length; i++) {
+  for (let i = columnas.inicio; i < rows.length; i++) {
     const r = rows[i]
     if (!r?.some(v => v !== null && v !== "")) continue
     if (normal(r[0]).startsWith("TOTAL")) continue
     if (r[0] !== null && r[0] !== "" && r[0] !== undefined) {
       fecha = fechaExcel(r[0], !!wb.Workbook?.WBProps?.date1904)
-      operador = texto(r[1]); turno = texto(r[2])
+      operador = texto(r[1]); turno = texto(r[columnas.turno])
     } else {
       if (texto(r[1])) operador = texto(r[1])
-      if (texto(r[2])) turno = texto(r[2])
+      if (texto(r[columnas.turno])) turno = texto(r[columnas.turno])
     }
-    const entrada = numero(r[5], `Fila ${i+1}, material`), buenos = numero(r[8], `Fila ${i+1}, bobina`), desperdicio = numero(r[10], `Fila ${i+1}, desperdicio`)
-    const motivo = texto(r[11]), bobina = texto(r[7]), material = texto(r[3])
-    const tiempo = r[13]
+    const entrada = numero(r[columnas.entrada], `Fila ${i+1}, material`), buenos = numero(r[columnas.buenos], `Fila ${i+1}, bobina`), desperdicio = numero(r[columnas.desperdicio], `Fila ${i+1}, desperdicio`)
+    const motivo = texto(r[columnas.motivo]), bobina = texto(r[columnas.bobina]), material = texto(r[columnas.item])
+    const tiempo = r[columnas.tiempo]
     let minutos: number | null = null
     if (tiempo !== null && tiempo !== "" && tiempo !== undefined) {
       const m = texto(tiempo).match(/^(\d+):(\d{2})$/)
@@ -63,13 +72,13 @@ export function analizarExtrusion(bytes: Uint8Array, hoja?: string): ParteExtrus
     if (numeroTurno) turno = `${numeroTurno}ª`
     else if (["MANANA","TARDE","NOCHE"].includes(normal(turno))) turno = ({MANANA:"1ª",TARDE:"2ª",NOCHE:"3ª"} as Record<string,string>)[normal(turno)]
     if (!/^[123][ªº°a]?$/i.test(turno) && !["MANANA","TARDE","NOCHE"].includes(normal(turno))) throw new Error(`Fila ${i+1}: turno no reconocido`)
-    if (entrada && !material) throw new Error(`Fila ${i+1}: falta el material`)
+    if (entrada && !material&&!impresion) throw new Error(`Fila ${i+1}: falta el material`)
     if (buenos && !bobina) throw new Error(`Fila ${i+1}: faltó el número de bobina`)
     if (bobina) { if (bobinas.has(bobina)) throw new Error(`Bobina duplicada: ${bobina}`); bobinas.add(bobina) }
     filas.push({ fila:i+1, fecha, operador, turno, material, entrada, bobina, buenos, desperdicio, motivo, minutos })
   }
   if (!filas.length) throw new Error("La plantilla está vacía: completa los datos de producción antes de importar")
-  const parte: ParteExtrusionDatos = { version:1, hoja:nombre, cliente:texto(celda(2,1)), producto:texto(celda(2,4)), ot:texto(celda(2,12)), pedido:numero(celda(2,7), "Cantidad pedida"), maquina:texto(celda(2,9)), ficha, filas, avisos:[] }
+  const parte: ParteExtrusionDatos = { version:1, hoja:nombre, cliente:texto(celda(2,1)), producto:texto(celda(2,impresion?5:4)), ot:texto(celda(2,impresion?14:12)), pedido:numero(celda(2,impresion?10:7), "Cantidad pedida"), maquina:texto(celda(2,impresion?12:9)), ficha, filas, avisos:[] }
   if (!parte.cliente || !parte.producto || !parte.ot || !parte.pedido) throw new Error("Completa cliente, producto, cantidad y número de OT")
   const m = metricasExtrusion(filas, parte.pedido)
   if (Math.abs(m.diferencia) > 0.02) parte.avisos.push(`Balance por conciliar: ${m.diferencia.toFixed(2)} kg (material − bobinas − desperdicio). No se considera merma automáticamente.`)
@@ -77,12 +86,14 @@ export function analizarExtrusion(bytes: Uint8Array, hoja?: string): ParteExtrus
   if (m.buenos >= parte.pedido) parte.avisos.push("La producción alcanzó la cantidad pedida; revisar el cierre de la OT")
   if (filas.some(f => f.motivo && f.minutos === null)) parte.avisos.push("Hay interrupciones sin duración: no es posible calcular disponibilidad ni productividad por hora")
   if (!parte.maquina) parte.avisos.push("La máquina no está indicada en la ficha")
+  if(impresion&&filas.some(f=>f.entrada>0&&!f.material))parte.avisos.push("Hay consumos sin producto de origen identificado en el Excel; se conservan los kilos sin inventar la identificación")
+  if(impresion&&!ficha.Colores)parte.avisos.push("La cantidad o descripción de colores no está indicada")
   if (filas.some((f,i)=>i>0&&f.fecha<filas[i-1].fecha)) parte.avisos.push("Hay fechas fuera de orden; revisa el detalle del Excel")
-  for (const [col, suma, titulo] of [[5,m.entrada,"material"],[8,m.buenos,"bobinas"],[10,m.desperdicio,"desperdicio"]] as const) {
+  for (const [col, suma, titulo] of [[columnas.entrada,m.entrada,"material"],[columnas.buenos,m.buenos,"bobinas"],[columnas.desperdicio,m.desperdicio,"desperdicio"]] as const) {
     const total = celda(10,col)
     if (total !== null && total !== undefined && Math.abs(numero(total,"Total")-suma)>0.02) parte.avisos.push(`El total declarado de ${titulo} no coincide con las filas; se usa la suma del detalle`)
   }
-  const totalBobinas = celda(10,7)
+  const totalBobinas = celda(10,columnas.bobina)
   if (totalBobinas !== null && totalBobinas !== undefined && numero(totalBobinas,"Total de bobinas")!==m.bobinas) parte.avisos.push("La cantidad de bobinas declarada no coincide con el detalle")
   return parte
 }

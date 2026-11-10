@@ -79,6 +79,7 @@ export default async function ProduccionPage() {
             Todas las órdenes
           </Link>
           <Link href="/produccion/extrusion" className="inline-flex h-10 items-center text-[14px] font-medium text-brand-ink hover:underline">Extrusión · importar y reportes</Link>
+          <Link href="/produccion/impresion" className="inline-flex h-10 items-center text-[14px] font-medium text-brand-ink hover:underline">Impresión · importar y reportes</Link>
         </div>
       </Encabezado>
 

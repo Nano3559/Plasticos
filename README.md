@@ -265,6 +265,16 @@ Todas las pantallas usan las mismas piezas de `src/components/ui/`: `Encabezado`
 
 ## Desarrollo local
 
+### Partes de impresión desde Excel
+
+En **Producción → Impresión** (`/produccion/impresion`) se importa la hoja `OT-IMP 7` del libro de referencia, o cualquier hoja `OT-IMP…` del mismo formato. `Plantilla IMPRESION` es la plantilla vacía; el detalle de producción empieza en la fila 12. La detección de hoja es automática si se deja su nombre vacío y no importa las otras secciones del libro.
+
+El flujo es subir Excel → revisar → confirmar: crea una OT si no existe (solicita precio por kg), o reutiliza la misma OT y su precio cuando coinciden cliente, referencia, producto y cantidad, incluida una OT ya creada desde extrusión. La ficha conserva rodillo, ancho, largo, micronaje, film, tubular, tratado, material, color, destino, tamaño, colores, caras y observaciones.
+
+Se muestran planilla con formato Excel, acumulados y totales, métricas, gráficos, filtros, historial, reporte Excel y avisos internos. Impresión y extrusión conservan versiones independientes por área y nunca se suman como si fueran producto terminado diferente. Los reportes de cada sección incluyen su ficha técnica. Los datos antiguos se mantienen como EXTRUSION mediante la migración `20261110150000_partes_impresion`, aplicada automáticamente en el despliegue.
+
+En el ejemplo de impresión: **339 kg utilizados, 330 kg impresos, 6 bobinas, 0 kg de desperdicio declarado, 9 kg por conciliar y avance del 55% sobre 600 kg pedidos**. Faltan máquina, colores e identificación de productos consumidos: se muestran avisos y se conservan los faltantes. «Sin identificar» en el gráfico de consumo agrupa los kilos sin identificación; no inventa productos ni movimientos de inventario. Los 9 kg no se convierten automáticamente en merma.
+
 ### Partes de extrusión desde Excel
 
 En **Producción → Extrusión** (`/produccion/extrusion`) se importa el formato **ORDEN DE TRABAJO SECCION DE EXTRUCCION**. El archivo de referencia tiene una hoja vacía `Plantilla (2)` y una hoja de ejemplo `OT 1`. El desarrollo comienza en la fila 18; se conservan ficha técnica, consumos, bobinas e interrupciones. El nombre de hoja es configurable.

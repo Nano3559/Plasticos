@@ -77,6 +77,7 @@ export default async function DetalleOrdenPage({ params }: { params: Promise<{ i
         acciones={
           <>
             <Button asChild size="sm" variant="outline"><Link href={`/produccion/extrusion?ot=${ot.id}`}>Parte de extrusión</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link href={`/produccion/impresion?ot=${ot.id}`}>Parte de impresión</Link></Button>
             {ot.estado === "ABIERTA" && (
               <Button asChild size="sm">
                 <Link href={`/produccion/registro?ot=${ot.id}`}>

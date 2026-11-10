@@ -11,6 +11,7 @@ const ACCESO: { prefijo: string; roles: Rol[] }[] = [
   { prefijo: "/inventario", roles: ["ALMACEN", "ADMIN", "GERENCIA"] },
   { prefijo: "/produccion/clientes", roles: ["ADMIN", "GERENCIA"] },
   { prefijo: "/produccion/extrusion", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
+  { prefijo: "/produccion/impresion", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { prefijo: "/produccion/ordenes/nueva", roles: ["ADMIN", "GERENCIA"] },
   { prefijo: "/produccion", roles: ["OPERADOR", "ADMIN", "GERENCIA"] },
   { prefijo: "/costos", roles: ["ADMIN", "GERENCIA"] },

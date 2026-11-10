@@ -22,6 +22,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
   }),
 } }))
 import { importarExtrusion } from "./extrusion"
+import { importarParteProduccion } from "@/lib/partes-import"
 
 function formulario() {
   const f = new FormData()
@@ -45,6 +46,18 @@ beforeEach(() => {
   mocks.crearOrden.mockResolvedValue({id:"ot-nueva",producto:"BOBINAS",kgPedidos:1000,estado:"ABIERTA"})
 })
 describe("importación de extrusión: permisos y versiones", () => {
+  it("vincula impresión a la misma OT sin reemplazar el parte de extrusión",async()=>{
+    const extruido={id:"extruido",huella:"huella-extrusion"}
+    mocks.findParte.mockImplementation(async({where})=>where.area==="EXTRUSION"?extruido:null)
+    mocks.findActual.mockImplementation(async({where})=>where.area==="EXTRUSION"?extruido:null)
+    const f=formulario(),r=await importarParteProduccion(f,"IMPRESION",mocks.analizar)
+    expect(r).toMatchObject({crearOrden:false,reemplaza:false,revision:""})
+    f.set("confirmar","si");f.set("huella",r.huella!);f.set("revision","")
+    expect(await importarParteProduccion(f,"IMPRESION",mocks.analizar)).toHaveProperty("mensaje")
+    expect(mocks.crearParte).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({area:"IMPRESION",ordenId:"ot-1"})}))
+    expect(mocks.crearOrden).not.toHaveBeenCalled()
+    expect(mocks.crearAvisos).toHaveBeenCalledWith({data:[expect.objectContaining({tipo:"IMPRESION",href:"/produccion/impresion?ot=ot-1"})]})
+  })
   it("analiza sin cliente ni OT previa y no escribe nada",async()=>{
     const f=formulario();f.delete("ordenId")
     expect(await importarExtrusion(f)).toMatchObject({crearOrden:true,crearCliente:true,destino:"nueva"})

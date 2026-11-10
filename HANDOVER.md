@@ -2,6 +2,8 @@
 
 Fecha de revisión: 10 de noviembre de 2026.
 
+Ampliación de impresión: `/produccion/impresion` usa `Plantilla IMPRESION` y `OT-IMP 7` del segundo libro de referencia. El importador, tablero, planilla y exportación comparten lógica con extrusión. La tabla histórica `ParteExtrusion` almacena ahora el área (`EXTRUSION` por defecto para conservar los datos anteriores, o `IMPRESION`); todas las consultas de versiones deben filtrar por área. La OT/cliente se reutilizan entre secciones y la huella de impresión incluye el área. Archivos centrales: `src/lib/partes-import.ts`, `partes-export.ts`, `impresion.ts` y `src/app/(app)/produccion/extrusion/tablero.tsx`. Migración: `20261110150000_partes_impresion`. Se verificó el archivo real: 339 kg de entrada, 330 kg impresos, 6 bobinas y 9 kg por conciliar. La plantilla de confección presente en ese libro no se implementó en esta ampliación.
+
 Actualización posterior: se implementó el módulo **Producción → Extrusión** solicitado por el usuario a partir de `EJEMPLO SIST EXTRUCCION.xlsx`, hojas `OT 1` y `Plantilla (2)`. Ver la sección de partes de extrusión en README.md. Incluye importación con vista previa, versiones inmutables del parte, métricas/gráficos/filtros, reporte Excel y avisos internos. Modelo nuevo `ParteExtrusion`, migración `20261110120000_partes_extrusion`, tipo de aviso `EXTRUSION`. No se aplicó la migración: el entorno no tiene PostgreSQL local escuchando ni Docker instalado; `.env` tampoco contiene DATABASE_URL_UNPOOLED. Configurar esa variable antes de migrar. Los partes no generan pesajes ni stock automáticamente: el ejemplo tiene 588 kg por conciliar. El resto de este documento describe la revisión anterior a esta ampliación.
 
 ## 1. Contexto y alcance

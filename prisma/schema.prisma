@@ -143,6 +143,7 @@ model OrdenTrabajo {
 model ParteExtrusion {
   id          String @id @default(cuid())
   ordenId     String
+  area        Area @default(EXTRUSION)
   orden       OrdenTrabajo @relation(fields: [ordenId], references: [id])
   huella      String
   archivo     String
@@ -154,6 +155,7 @@ model ParteExtrusion {
 
   @@unique([ordenId, huella])
   @@index([ordenId, createdAt])
+  @@index([area, ordenId, createdAt])
 }
 
 model RegistroProduccion {
@@ -263,6 +265,7 @@ model NotaCredito {
 }
 
 enum TipoNotificacion {
+  IMPRESION  // parte y alertas de impresión
   EXTRUSION  // importación y alertas del parte de extrusión
   SALIDA     // vale de salida de inventario
   AJUSTE     // corrección de inventario (suma o resta)

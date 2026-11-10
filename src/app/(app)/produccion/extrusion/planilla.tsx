@@ -3,7 +3,8 @@ import { agruparExtrusion, metricasExtrusion } from "@/lib/extrusion"
 import { formatNumero } from "@/lib/formato"
 
 /** Parte completo en orden de origen; sus acumulados nunca dependen de filtros del tablero. */
-export function PlanillaExtrusion({ datos }: { datos: ParteExtrusionDatos }) {
+export function PlanillaExtrusion({ datos,area="EXTRUSION" }: { datos: ParteExtrusionDatos;area?:"EXTRUSION"|"IMPRESION" }) {
+  const impresion=area==="IMPRESION",seccion=impresion?"impresión":"extrusión"
   const total = metricasExtrusion(datos.filas, datos.pedido)
   const acumulados = datos.filas.reduce<{ entrada: number; buenos: number }[]>((valores, fila) => {
     const anterior = valores[valores.length - 1]
@@ -23,7 +24,7 @@ export function PlanillaExtrusion({ datos }: { datos: ParteExtrusionDatos }) {
     <article className="overflow-hidden rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300 bg-cyan-50 px-5 py-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-cyan-800">Orden de trabajo · sección de extrusión</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-cyan-800">Orden de trabajo · sección de {seccion}</p>
           <h3 className="mt-1 text-xl font-bold">{datos.producto}</h3>
         </div>
         <p className="rounded-lg border border-cyan-200 bg-white px-4 py-2 text-xl font-bold">OT {datos.ot}</p>
@@ -43,7 +44,7 @@ export function PlanillaExtrusion({ datos }: { datos: ParteExtrusionDatos }) {
         <h4 className="font-bold uppercase tracking-wide">Desarrollo de la producción</h4>
         <p>Parte completo · {datos.hoja} · desplaza la tabla para ver todas las columnas</p>
       </div>
-      <div tabIndex={0} role="region" aria-label={`Planilla completa de extrusión OT ${datos.ot}`} className="max-h-[70vh] overflow-auto focus-visible:outline-2 focus-visible:outline-cyan-700">
+      <div tabIndex={0} role="region" aria-label={`Planilla completa de ${seccion} OT ${datos.ot}`} className="max-h-[70vh] overflow-auto focus-visible:outline-2 focus-visible:outline-cyan-700">
         <table className="w-full min-w-[1250px] border-collapse text-sm">
           <caption className="sr-only">Desarrollo de producción de la OT {datos.ot}, con acumulados recalculados en orden de las filas del archivo.</caption>
           <thead className="sticky top-0 z-10 bg-cyan-50 text-xs uppercase text-cyan-950">
@@ -56,7 +57,7 @@ export function PlanillaExtrusion({ datos }: { datos: ParteExtrusionDatos }) {
               <th colSpan={2} scope="colgroup" className={celda}>Interrupciones</th>
             </tr>
             <tr>
-              {["Ítem", "Kilos", "Acumulado kg", "N° bobina", "Kilos", "Acumulado kg", "Desperdicio kg", "Motivo", "Tiempo"].map((h, i) => <th key={i} scope="col" className={celda}>{h}</th>)}
+              {[impresion?"Producto":"Ítem", "Kilos", impresion?"Total utilizado kg":"Acumulado kg", "N° bobina", "Kilos", "Acumulado kg", "Desperdicio kg", "Motivo", "Tiempo"].map((h, i) => <th key={i} scope="col" className={celda}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -68,7 +69,7 @@ export function PlanillaExtrusion({ datos }: { datos: ParteExtrusionDatos }) {
               <td className={celda}>{total.sinDuracion ? `${total.sinDuracion} filas sin duración` : "Duraciones registradas"}</td>
               <td className={numero}>{formatNumero(total.minutos)} min conocidos</td>
             </tr>
-            {agruparExtrusion(datos.filas, "material").filter(g => g.entrada > 0).map(g => (
+            {!impresion&&agruparExtrusion(datos.filas, "material").filter(g => g.entrada > 0).map(g => (
               <tr key={g.nombre} className="bg-slate-50 text-xs">
                 <th colSpan={4} scope="row" className={`${celda} text-left font-semibold`}>TOTAL {g.nombre}</th>
                 <td className={numero}>{formatNumero(g.entrada)}</td><td colSpan={7} className={celda} />
