@@ -48,6 +48,10 @@ export async function exportarPartes(req:NextRequest,area:AreaParte) {
     "Fila Excel": f.fila, Archivo: p.archivo, Hoja: p.hoja,
   })))
   const ordenesDelPeriodo=new Set(filas.map(f=>f.parte.ordenId))
+  agregar("Por OT",partes.filter(p=>ordenesDelPeriodo.has(p.ordenId)).map(p=>{
+    const total=metricasExtrusion(filas.filter(f=>f.parte.ordenId===p.ordenId))
+    return {OT:p.datos.ot,Cliente:p.datos.cliente,"Material kg":total.entradaCompleta?total.entrada:"Datos incompletos","Producto kg":total.buenos,"Desperdicio kg":total.desperdicio,"Desperdicio %":total.mermaPct??"Sin dato"}
+  }))
   agregar("Ficha técnica",partes.filter(p=>ordenesDelPeriodo.has(p.ordenId)).map(p=>({
     OT:p.datos.ot,Cliente:p.datos.cliente,Producto:p.datos.producto,"Pedido kg":p.datos.pedido,
     Máquina:p.datos.maquina,...p.datos.ficha,
