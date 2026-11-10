@@ -26,6 +26,7 @@ export const MODULOS: Modulo[] = [
   { href: "/produccion", label: "Producción", descripcion: "Órdenes y pesajes", icon: Factory, color: "#eb8909", roles: ["OPERADOR", "ADMIN", "GERENCIA"] },
   { href: "/produccion/extrusion", label: "Extrusión", descripcion: "Partes, bobinas y reportes", icon: Factory, color: "#07899b", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { href: "/produccion/impresion", label: "Impresión", descripcion: "Partes impresos y reportes", icon: Factory, color: "#884dff", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
+  { href: "/produccion/confeccion", label: "Confección", descripcion: "Bultos, paquetes y reportes", icon: Factory, color: "#299438", roles: ["OPERADOR", "ALMACEN", "ADMIN", "GERENCIA"] },
   { href: "/costos", label: "Costos", descripcion: "Costo por 100 kg", icon: Calculator, color: "#884dff", roles: ["ADMIN", "GERENCIA"] },
   { href: "/cobranzas", label: "Cobranzas", descripcion: "Cartera y pagos", icon: Receipt, color: "#299438", roles: ["ADMIN", "GERENCIA"] },
   { href: "/reportes", label: "Reportes", descripcion: "Exportar a Excel", icon: BarChart3, color: "#b8255f", roles: ["ADMIN", "GERENCIA"] },

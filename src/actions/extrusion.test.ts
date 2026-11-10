@@ -46,6 +46,17 @@ beforeEach(() => {
   mocks.crearOrden.mockResolvedValue({id:"ot-nueva",producto:"BOBINAS",kgPedidos:1000,estado:"ABIERTA"})
 })
 describe("importación de extrusión: permisos y versiones", () => {
+  it("crea una OT de confección sin usar una fecha de producción inventada",async()=>{
+    const datos=mocks.analizar();datos.filas=[{fecha:""}];mocks.analizar.mockReturnValue(datos)
+    const f=formulario();f.delete("ordenId")
+    const r=await importarParteProduccion(f,"CONFECCION",mocks.analizar)
+    f.set("confirmar","si");f.set("huella",r.huella!);f.set("revision","");f.set("destino","nueva");f.set("precioUnitario","14,50")
+    expect(await importarParteProduccion(f,"CONFECCION",mocks.analizar)).toHaveProperty("mensaje")
+    const creada=mocks.crearOrden.mock.calls[0][0].data
+    expect(creada).not.toHaveProperty("fechaIngreso")
+    expect(mocks.crearParte).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({area:"CONFECCION"})}))
+    expect(mocks.crearAvisos).toHaveBeenCalledWith({data:[expect.objectContaining({tipo:"CONFECCION",href:"/produccion/confeccion?ot=ot-nueva"})]})
+  })
   it("vincula impresión a la misma OT sin reemplazar el parte de extrusión",async()=>{
     const extruido={id:"extruido",huella:"huella-extrusion"}
     mocks.findParte.mockImplementation(async({where})=>where.area==="EXTRUSION"?extruido:null)

@@ -265,6 +265,7 @@ model NotaCredito {
 }
 
 enum TipoNotificacion {
+  CONFECCION // parte y alertas de confección
   IMPRESION  // parte y alertas de impresión
   EXTRUSION  // importación y alertas del parte de extrusión
   SALIDA     // vale de salida de inventario

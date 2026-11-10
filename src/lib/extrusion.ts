@@ -2,7 +2,7 @@ import * as XLSX from "xlsx"
 import { leerNumero } from "@/lib/formato"
 import { parseFecha } from "@/lib/lectura-excel"
 
-export type FilaExtrusion = { fila: number; fecha: string; operador: string; turno: string; material: string; entrada: number; bobina: string; buenos: number; desperdicio: number; motivo: string; minutos: number | null }
+export type FilaExtrusion = { fila: number; fecha: string; operador: string; turno: string; material: string; entrada: number; bobina: string; buenos: number; desperdicio: number; motivo: string; minutos: number | null; entradaInformada?:boolean; bulto?:string; paquetes?:number|null; bobinaEntrada?:string; inicio?:string; termino?:string }
 export type ParteExtrusionDatos = { version: 1; hoja: string; cliente: string; producto: string; ot: string; pedido: number; maquina: string; ficha: Record<string, string>; filas: FilaExtrusion[]; avisos: string[] }
 const texto = (v: unknown) => String(v ?? "").trim()
 const normal = (v: unknown) => texto(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
@@ -81,8 +81,8 @@ export function analizarParteProduccion(bytes: Uint8Array, hoja: string | undefi
   const parte: ParteExtrusionDatos = { version:1, hoja:nombre, cliente:texto(celda(2,1)), producto:texto(celda(2,impresion?5:4)), ot:texto(celda(2,impresion?14:12)), pedido:numero(celda(2,impresion?10:7), "Cantidad pedida"), maquina:texto(celda(2,impresion?12:9)), ficha, filas, avisos:[] }
   if (!parte.cliente || !parte.producto || !parte.ot || !parte.pedido) throw new Error("Completa cliente, producto, cantidad y número de OT")
   const m = metricasExtrusion(filas, parte.pedido)
-  if (Math.abs(m.diferencia) > 0.02) parte.avisos.push(`Balance por conciliar: ${m.diferencia.toFixed(2)} kg (material − bobinas − desperdicio). No se considera merma automáticamente.`)
-  if (m.mermaPct > 5) parte.avisos.push("Desperdicio superior al umbral de seguimiento del 5% del material utilizado")
+  if (m.diferencia!==null&&Math.abs(m.diferencia) > 0.02) parte.avisos.push(`Balance por conciliar: ${m.diferencia.toFixed(2)} kg (material − bobinas − desperdicio). No se considera merma automáticamente.`)
+  if (m.mermaPct!==null&&m.mermaPct > 5) parte.avisos.push("Desperdicio superior al umbral de seguimiento del 5% del material utilizado")
   if (m.buenos >= parte.pedido) parte.avisos.push("La producción alcanzó la cantidad pedida; revisar el cierre de la OT")
   if (filas.some(f => f.motivo && f.minutos === null)) parte.avisos.push("Hay interrupciones sin duración: no es posible calcular disponibilidad ni productividad por hora")
   if (!parte.maquina) parte.avisos.push("La máquina no está indicada en la ficha")
@@ -100,7 +100,9 @@ export function analizarParteProduccion(bytes: Uint8Array, hoja: string | undefi
 export function metricasExtrusion(filas: FilaExtrusion[], pedido = 0) {
   const entrada=filas.reduce((s,f)=>s+f.entrada,0), buenos=filas.reduce((s,f)=>s+f.buenos,0), desperdicio=filas.reduce((s,f)=>s+f.desperdicio,0)
   const bobinas=filas.filter(f=>f.bobina).length
-  return { entrada,buenos,desperdicio,bobinas,diferencia:entrada-buenos-desperdicio,rendimiento:entrada?buenos/entrada*100:0,mermaPct:entrada?desperdicio/entrada*100:0,avance:pedido?buenos/pedido*100:0,pesoMedio:bobinas?buenos/bobinas:0,minutos:filas.reduce((s,f)=>s+(f.minutos??0),0),sinDuracion:filas.filter(f=>f.motivo&&f.minutos===null).length }
+  const bultos=filas.filter(f=>f.bulto).length,unidades=bobinas+bultos
+  const entradaCompleta=filas.every(f=>f.entradaInformada!==false)
+  return { entrada,buenos,desperdicio,bobinas,bultos,entradaCompleta,diferencia:entradaCompleta?entrada-buenos-desperdicio:null,rendimiento:entradaCompleta?(entrada?buenos/entrada*100:0):null,mermaPct:entradaCompleta?(entrada?desperdicio/entrada*100:0):null,avance:pedido?buenos/pedido*100:0,pesoMedio:unidades?buenos/unidades:0,minutos:filas.reduce((s,f)=>s+(f.minutos??0),0),sinDuracion:filas.filter(f=>f.motivo&&f.minutos===null).length,paquetes:filas.reduce((s,f)=>s+(f.paquetes??0),0),paquetesCompletos:filas.every(f=>f.paquetes!==null),sinFecha:filas.filter(f=>!f.fecha).length }
 }
 export function agruparExtrusion(filas: FilaExtrusion[], campo: "fecha" | "operador" | "turno" | "material") {
   const grupos = new Map<string,FilaExtrusion[]>()
@@ -110,7 +112,7 @@ export function agruparExtrusion(filas: FilaExtrusion[], campo: "fecha" | "opera
 
 export type FiltrosExtrusion = { ot?:string; desde?:string; hasta?:string; maquina?:string; turno?:string; operador?:string }
 export function filtrarExtrusion<T extends FilaExtrusion & {maquina:string}>(filas:T[], filtros:FiltrosExtrusion):T[] {
-  return filas.filter(f=>(!filtros.desde||f.fecha>=filtros.desde)&&(!filtros.hasta||f.fecha<=filtros.hasta)&&(!filtros.maquina||f.maquina===filtros.maquina)&&(!filtros.turno||f.turno===filtros.turno)&&(!filtros.operador||f.operador===filtros.operador))
+  return filas.filter(f=>(!(filtros.desde||filtros.hasta)||!!f.fecha)&&(!filtros.desde||f.fecha>=filtros.desde)&&(!filtros.hasta||f.fecha<=filtros.hasta)&&(!filtros.maquina||f.maquina===filtros.maquina)&&(!filtros.turno||f.turno===filtros.turno)&&(!filtros.operador||f.operador===filtros.operador))
 }
 
 export function leerFiltrosExtrusion(valores:Record<string,string|string[]|undefined>):FiltrosExtrusion {

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 
 export type Aviso = {
   id: string
-  tipo: "SALIDA" | "AJUSTE" | "STOCK_BAJO" | "RECHAZO" | "EXTRUSION" | "IMPRESION"
+  tipo: "SALIDA" | "AJUSTE" | "STOCK_BAJO" | "RECHAZO" | "EXTRUSION" | "IMPRESION" | "CONFECCION"
   titulo: string
   detalle: string | null
   href: string | null
@@ -17,6 +17,7 @@ export type Aviso = {
 }
 
 const ICONO = {
+  CONFECCION: { I: SlidersHorizontal, clase: "bg-info/10 text-info" },
   IMPRESION: { I: SlidersHorizontal, clase: "bg-info/10 text-info" },
   EXTRUSION: { I: SlidersHorizontal, clase: "bg-info/10 text-info" },
   SALIDA: { I: ArrowUpFromLine, clase: "bg-info/10 text-info" },

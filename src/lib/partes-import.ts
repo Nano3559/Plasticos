@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/session"
 import { prisma } from "@/lib/prisma"
 import { metricasExtrusion, type ParteExtrusionDatos } from "@/lib/extrusion"
 import { ordenTrabajoSchema } from "@/lib/schemas/produccion"
+import { SECCIONES_PARTE,type AreaParte } from "@/lib/secciones-produccion"
 
 const normalizar = (s: string) => s.trim().replace(/\s+/g, " ").toLocaleUpperCase("es")
 
@@ -30,9 +31,9 @@ async function buscarOrden(db: Pick<Prisma.TransactionClient,"ordenTrabajo">, cl
   return ordenes[0]??null
 }
 
-export async function importarParteProduccion(form:FormData,area:"EXTRUSION"|"IMPRESION",analizar:(bytes:Uint8Array,hoja?:string)=>ParteExtrusionDatos):Promise<ResultadoExtrusion> {
-  const etiqueta=area==="IMPRESION"?"Impresión":"Extrusión"
-  const ruta=area==="IMPRESION"?"/produccion/impresion":"/produccion/extrusion"
+export async function importarParteProduccion(form:FormData,area:AreaParte,analizar:(bytes:Uint8Array,hoja?:string)=>ParteExtrusionDatos):Promise<ResultadoExtrusion> {
+  const etiqueta=SECCIONES_PARTE[area].nombre
+  const ruta=`/produccion/${SECCIONES_PARTE[area].slug}`
   const user = await getSessionUser()
   if (!user || !["ADMIN","GERENCIA"].includes(user.rol) || user.debeCambiarClave) return { error:"Sin permisos para importar" }
   const file = form.get("archivo"), ordenId = String(form.get("ordenId")??""), confirmar = form.get("confirmar") === "si"
@@ -50,7 +51,7 @@ export async function importarParteProduccion(form:FormData,area:"EXTRUSION"|"IM
       if(normalizar(ref)!==normalizar(datos.ot)||normalizar(orden.cliente.nombre)!==normalizar(datos.cliente)||normalizar(orden.producto)!==normalizar(datos.producto)) return {error:`El Excel (OT ${datos.ot}, ${datos.cliente}, ${datos.producto}) no coincide con la OT seleccionada (${ref}, ${orden.cliente.nombre}, ${orden.producto}). Corrige la selección o el archivo.`}
       if(Math.abs(Number(orden.kgPedidos)-datos.pedido)>0.02) return {error:"La cantidad pedida del Excel no coincide con la OT"}
     }
-    const huella = createHash("sha256").update(JSON.stringify(datos)+(area==="IMPRESION"?"|IMPRESION":"")).digest("hex")
+    const huella = createHash("sha256").update(JSON.stringify(datos)+(area!=="EXTRUSION"?`|${area}`:"")).digest("hex")
     const anterior = orden ? await prisma.parteExtrusion.findFirst({where:{ordenId:orden.id,area},orderBy:[{createdAt:"desc"},{id:"desc"}]}) : null
     if(orden&&orden.estado!=="ABIERTA"&&anterior?.huella!==huella) return {error:"La OT existente está cerrada. Reábrela antes de actualizar el parte."}
     if (!confirmar) return {datos,huella,revision:anterior?.id??"",reemplaza:!!anterior,crearOrden:!orden,crearCliente:!orden&&!cliente,destino:orden?.id??"nueva"}
@@ -68,7 +69,8 @@ export async function importarParteProduccion(form:FormData,area:"EXTRUSION"|"IM
           if(String(form.get("destino"))!=="nueva"||!nueva.success) throw new Error("El destino cambió. Vuelve a analizar el Excel")
           const clienteFinal=clienteActual??await tx.cliente.create({data:{nombre:datos.cliente}})
           const origenKey=`extrusion:${createHash("sha256").update(`${normalizar(datos.cliente)}|${normalizar(datos.ot)}`).digest("hex")}`
-          destino=await tx.ordenTrabajo.create({data:{...nueva.data,clienteId:clienteFinal.id,origenKey,fechaIngreso:new Date(`${datos.filas.map(f=>f.fecha).sort()[0]}T12:00:00Z`)},include:{cliente:true}})
+          const primeraFecha=datos.filas.map(f=>f.fecha).filter(Boolean).sort()[0]
+          destino=await tx.ordenTrabajo.create({data:{...nueva.data,clienteId:clienteFinal.id,origenKey,...(primeraFecha?{fechaIngreso:new Date(`${primeraFecha}T12:00:00Z`)}:{})},include:{cliente:true}})
         }
       }
       if(!destino)throw new Error("No se encontró la OT")
@@ -90,6 +92,7 @@ export async function importarParteProduccion(form:FormData,area:"EXTRUSION"|"IM
     })
     revalidatePath("/produccion/extrusion")
     revalidatePath("/produccion/impresion")
+    revalidatePath("/produccion/confeccion")
     revalidatePath(`/produccion/ordenes/${resultado.ordenId}`)
     revalidatePath("/produccion/ordenes")
     revalidatePath("/produccion/clientes")

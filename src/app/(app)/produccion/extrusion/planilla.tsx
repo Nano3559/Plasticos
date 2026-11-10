@@ -1,9 +1,12 @@
 import type { ParteExtrusionDatos } from "@/lib/extrusion"
 import { agruparExtrusion, metricasExtrusion } from "@/lib/extrusion"
 import { formatNumero } from "@/lib/formato"
+import type { AreaParte } from "@/lib/secciones-produccion"
+import { PlanillaConfeccion } from "../confeccion/planilla"
 
 /** Parte completo en orden de origen; sus acumulados nunca dependen de filtros del tablero. */
-export function PlanillaExtrusion({ datos,area="EXTRUSION" }: { datos: ParteExtrusionDatos;area?:"EXTRUSION"|"IMPRESION" }) {
+export function PlanillaExtrusion({ datos,area="EXTRUSION" }: { datos: ParteExtrusionDatos;area?:AreaParte }) {
+  if(area==="CONFECCION")return <PlanillaConfeccion datos={datos}/>
   const impresion=area==="IMPRESION",seccion=impresion?"impresión":"extrusión"
   const total = metricasExtrusion(datos.filas, datos.pedido)
   const acumulados = datos.filas.reduce<{ entrada: number; buenos: number }[]>((valores, fila) => {
@@ -102,7 +105,7 @@ export function PlanillaExtrusion({ datos,area="EXTRUSION" }: { datos: ParteExtr
       </div>
       <footer className="flex flex-wrap justify-between gap-3 border-t border-slate-300 bg-slate-50 px-4 py-3 text-sm">
         <p>Avance del pedido: <strong>{formatNumero(total.avance)}%</strong></p>
-        <p className={Math.abs(total.diferencia) > .02 ? "font-semibold text-amber-800" : "text-slate-600"}>Balance por conciliar: {formatNumero(total.diferencia)} kg</p>
+        <p className={Math.abs(total.diferencia??0) > .02 ? "font-semibold text-amber-800" : "text-slate-600"}>Balance por conciliar: {formatNumero(total.diferencia)} kg</p>
       </footer>
     </article>
   )

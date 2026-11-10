@@ -265,6 +265,14 @@ Todas las pantallas usan las mismas piezas de `src/components/ui/`: `Encabezado`
 
 ## Desarrollo local
 
+### Partes de confección desde Excel
+
+En **Producción → Confección** (`/produccion/confeccion`) se importa `OT-CONF 7`, o una hoja `OT-CONF…` del mismo formato; `Plantilla CONFECCION` es la plantilla vacía y los datos empiezan en la fila 12. Se reutiliza la OT de las otras secciones si coincide, o se crea una nueva con el precio confirmado. La sección conserva versiones, avisos, gráficos, reporte Excel y planilla propia con bobina de entrada, kg, bultos, pesos, paquetes, inicio, término, soldadura y modo de entrega.
+
+El archivo `EJEMPLO SIST EXTRUCCION (2) - Copy.xlsx` tiene **10 bultos, 317 kg terminados, 9,8 kg de desperdicio y avance del 52,83% sobre 600 kg pedidos**. No informa fechas, operadores, turnos, kg de entrada, paquetes ni máquina. Se permite conservar ese historial incompleto con avisos, sin copiar datos de impresión/extrusión ni inventar la fecha de producción. Si se crea una OT sin fechas en el parte, su fecha de ingreso usa la fecha de creación de la orden; el detalle sigue sin fecha de producción.
+
+Sin todas las entradas, balance, rendimiento y porcentaje de desperdicio quedan **pendientes**, no en cero. Las filas sin fecha se incluyen únicamente en los totales sin periodo y en el grupo «Sin fecha»; al filtrar desde/hasta se excluyen del análisis y del Excel del periodo. La planilla completa sigue mostrándolas. Puede reimportarse el Excel completado como una nueva versión. La migración `20261110170000_partes_confeccion` agrega el tipo de aviso; los partes usan el área CONFECCION ya existente.
+
 ### Partes de impresión desde Excel
 
 En **Producción → Impresión** (`/produccion/impresion`) se importa la hoja `OT-IMP 7` del libro de referencia, o cualquier hoja `OT-IMP…` del mismo formato. `Plantilla IMPRESION` es la plantilla vacía; el detalle de producción empieza en la fila 12. La detección de hoja es automática si se deja su nombre vacío y no importa las otras secciones del libro.
