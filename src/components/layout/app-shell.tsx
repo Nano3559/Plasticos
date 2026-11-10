@@ -10,6 +10,7 @@ import { TurnoChip } from "./turno-chip"
 import { Campana } from "./campana"
 
 function esActivo(pathname: string, href: string) {
+  if (href === "/produccion" && pathname.startsWith("/produccion/extrusion")) return false
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
 }
 

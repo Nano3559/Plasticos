@@ -1,0 +1,5 @@
+"use client"
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+export function GraficosExtrusion({series}:{series:{titulo:string;datos:{nombre:string;entrada:number;buenos:number;desperdicio:number}[]}[]}) {
+  return <div className="grid gap-5 lg:grid-cols-2">{series.map(s=><section key={s.titulo} className="min-w-0 rounded-xl border border-line p-4"><h2 className="mb-3 font-semibold">{s.titulo}</h2>{s.datos.length?<><div className="h-72" role="img" aria-label={`${s.titulo}. Valores detallados en la tabla del reporte.`}><ResponsiveContainer width="100%" height="100%"><BarChart data={s.datos}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="nombre" tick={{fontSize:11}}/><YAxis/><Tooltip/><Legend/><Bar dataKey="entrada" name="Material (kg)" fill="#94a3b8"/><Bar dataKey="buenos" name="Bobinas (kg)" fill="#07899b"/><Bar dataKey="desperdicio" name="Desperdicio (kg)" fill="#eb8909"/></BarChart></ResponsiveContainer></div></>:<p>Sin datos en este periodo.</p>}</section>)}</div>
+}

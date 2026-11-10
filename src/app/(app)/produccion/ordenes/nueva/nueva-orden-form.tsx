@@ -59,6 +59,12 @@ export function NuevaOrdenForm({
         <MensajeError>{error}</MensajeError>
 
         <div className="space-y-2">
+          <Label htmlFor="refExterna">N° de OT del Excel o del parte (opcional)</Label>
+          <Input id="refExterna" name="refExterna" maxLength={60} placeholder="Ej. 1" />
+          <p className="text-xs text-muted">Si importas un parte de extrusión, escribe el mismo número que aparece en el documento.</p>
+        </div>
+
+        <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">
             <Label htmlFor="clienteId">Cliente</Label>
             <Link href="/produccion/clientes/nuevo?volver=orden" className="text-[13px] font-semibold text-brand-ink hover:underline">

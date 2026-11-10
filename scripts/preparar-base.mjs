@@ -39,9 +39,13 @@ if (process.env.SEED_ON_DEPLOY === "true") {
 }
 
 // Restablece la cuenta de Gerencia con la MISMA conexión que usa la app.
-// Uso: en Vercel agrega RESET_CLAVE_GERENCIA=<contraseña temporal> y haz Redeploy.
+// Uso: en Vercel agrega RESET_CLAVE_GERENCIA=<contraseña temporal> y
+// CONFIRMAR_RESET_CLAVE_GERENCIA=true antes de hacer Redeploy.
 // Después de entrar, BORRA la variable y vuelve a desplegar.
-if (process.env.RESET_CLAVE_GERENCIA) {
+if (process.env.RESET_CLAVE_GERENCIA && process.env.CONFIRMAR_RESET_CLAVE_GERENCIA !== "true") {
+  console.log("→ Recuperación de Gerencia omitida: requiere CONFIRMAR_RESET_CLAVE_GERENCIA=true; se conserva la contraseña actual")
+}
+if (process.env.RESET_CLAVE_GERENCIA && process.env.CONFIRMAR_RESET_CLAVE_GERENCIA === "true") {
   const bcrypt = (await import("bcryptjs")).default
   const url = new URL(process.env.DATABASE_URL)
   console.log(`→ RESET_CLAVE_GERENCIA: restableciendo gerencia@planta.local en ${url.host}${url.pathname}`)

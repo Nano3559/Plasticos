@@ -265,6 +265,23 @@ Todas las pantallas usan las mismas piezas de `src/components/ui/`: `Encabezado`
 
 ## Desarrollo local
 
+### Partes de extrusión desde Excel
+
+En **Producción → Extrusión** (`/produccion/extrusion`) se importa el formato **ORDEN DE TRABAJO SECCION DE EXTRUCCION**. El archivo de referencia tiene una hoja vacía `Plantilla (2)` y una hoja de ejemplo `OT 1`. El desarrollo comienza en la fila 18; se conservan ficha técnica, consumos, bobinas e interrupciones. El nombre de hoja es configurable.
+
+1. Aplicar la migración `20261110120000_partes_extrusion` con `npm run db:migrate` sobre la base del entorno correcto y regenerar el cliente con `npx prisma generate`. En Vercel la aplica `build:prod`.
+2. Crear primero una OT abierta con cliente, producto, número de referencia y kg pedidos que coincidan con el Excel. El precio se registra en la OT; no se inventa a partir del parte de extrusión.
+3. Como ADMIN o GERENCIA, seleccionar OT y archivo `.xlsx`/`.xls` (hasta 4 MB), **Analizar sin guardar**, revisar ficha, filas y avisos y confirmar.
+4. Consultar métricas, gráficos y filtros por fechas, OT, máquina, turno y operador. El reporte Excel incluye resumen, detalle, agrupaciones y criterios del cálculo. OPERADOR y ALMACEN pueden consultar; ADMIN y GERENCIA importan y exportan.
+
+Cada importación conserva una versión del parte. Un archivo idéntico no duplica métricas ni avisos; una versión actualizada sustituye el parte completo en los reportes y conserva las versiones anteriores en la base. Las actualizaciones concurrentes requieren repetir el análisis. No mezclar varios partes parciales como si fueran versiones completas de una misma OT.
+
+Las métricas incluyen material utilizado, kg producidos, bobinas, peso medio, desperdicio, rendimiento aparente, avance sobre pedido y balance por conciliar. Los reportes suman el detalle, no los totales almacenados por Excel. Los gráficos y la tabla respetan los filtros; la ficha y el avance por OT muestran el parte completo.
+
+**Balance por conciliar = material utilizado − kg de bobinas − desperdicio**. No se interpreta automáticamente como merma, rechazo o stock disponible. En el ejemplo: 1.632 − 1.008 − 36 = **588 kg pendientes de conciliar**. El parte no crea movimientos de inventario, entregas, pagos ni pesajes operativos; sus reportes quedan separados para evitar duplicar los registros existentes. No se calcula OEE ni kg/h sin horas operativas. Los tiempos se cargan como `hh:mm` o duración Excel; números enteros sin unidad se rechazan.
+
+Al importar, ADMIN, GERENCIA y ALMACEN activos reciben un aviso en la campana, salvo quien hizo la importación. Incluye advertencias por balance, desperdicio superior al 5% (umbral de seguimiento), pedido alcanzado e interrupciones sin duración. Son avisos internos al importar, no correos ni notificaciones push. El aviso de pedido alcanzado no cierra la OT automáticamente.
+
 Necesitas Node 22 y Docker.
 
 ```bash

@@ -10,6 +10,7 @@ const textoOpcional = (max: number) =>
     .transform((v) => (v ? v : undefined))
 
 export const ordenTrabajoSchema = z.object({
+  refExterna: textoOpcional(60),
   clienteId: z.string().min(1, "Cliente requerido"),
   producto: z.string().min(1, "Producto requerido"),
   medida: z.string().optional(),

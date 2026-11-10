@@ -32,6 +32,7 @@ export default async function ReportesPage() {
   const resumen = resumirCartera(cartera)
 
   const descargas = [
+    { href: "/api/export/extrusion", titulo: "Partes de extrusión", texto: "Resumen, bobinas, consumos e interrupciones de la última versión por OT, por fecha, operador, turno, material y máquina.", nota: "Filtros y gráficos en Producción → Extrusión" },
     { href: "/api/export/inventario", titulo: "Inventario", texto: "Stock de cada material, mínimo, costo promedio y valor.", nota: `${materiales} materiales` },
     { href: "/api/export/produccion", titulo: "Producción por orden", texto: "Kg pedidos, terminados, merma, rechazo y rendimiento de cada OT.", nota: `${ordenes} órdenes` },
     { href: "/api/export/costos", titulo: "Costos por orden", texto: "Materia prima, tintas, mano de obra, energía y costo por 100 kg.", nota: `${porOrden.size} órdenes con producción` },

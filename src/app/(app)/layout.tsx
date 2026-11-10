@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/api/sesion/cerrar?motivo=sesion")
 
   // La campana solo aparece para los roles que reciben avisos
-  const avisosSinLeer = ROLES_AVISO_INVENTARIO.includes(user.rol) ? await contarSinLeer(user.id) : null
+  const avisosSinLeer = (ROLES_AVISO_INVENTARIO.includes(user.rol) || user.rol === "ADMIN") ? await contarSinLeer(user.id) : null
 
   return (
     <AppShell user={{ name: user.name, rol: user.rol }} avisosSinLeer={avisosSinLeer}>

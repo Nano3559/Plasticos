@@ -26,7 +26,7 @@ export default async function NotificacionesPage() {
     leida: n.leidaEn !== null,
     creada: n.createdAt.toISOString(),
   }))
-  const recibe = ROLES_AVISO_INVENTARIO.includes(user.rol)
+  const recibe = ROLES_AVISO_INVENTARIO.includes(user.rol) || user.rol === "ADMIN"
 
   return <ListaAvisos avisos={avisos} recibe={recibe} maximo={MAXIMO} />
 }

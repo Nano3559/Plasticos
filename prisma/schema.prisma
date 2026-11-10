@@ -70,6 +70,7 @@ model User {
   notasCredito NotaCredito[]
   gastos       Gasto[]
   notificaciones Notificacion[]
+  partesExtrusion ParteExtrusion[]
 }
 
 model Cliente {
@@ -135,6 +136,24 @@ model OrdenTrabajo {
   entregas       Entrega[]
   notasCredito   NotaCredito[]
   movimientos    MovimientoInventario[]
+  partesExtrusion ParteExtrusion[]
+}
+
+// Versiones del parte Excel: se conserva el historial; los reportes usan la última por OT.
+model ParteExtrusion {
+  id          String @id @default(cuid())
+  ordenId     String
+  orden       OrdenTrabajo @relation(fields: [ordenId], references: [id])
+  huella      String
+  archivo     String
+  hoja        String
+  datos       Json
+  autorId     String
+  autor       User @relation(fields: [autorId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([ordenId, huella])
+  @@index([ordenId, createdAt])
 }
 
 model RegistroProduccion {
@@ -244,6 +263,7 @@ model NotaCredito {
 }
 
 enum TipoNotificacion {
+  EXTRUSION  // importación y alertas del parte de extrusión
   SALIDA     // vale de salida de inventario
   AJUSTE     // corrección de inventario (suma o resta)
   STOCK_BAJO // una salida o ajuste dejó el material por debajo de su mínimo

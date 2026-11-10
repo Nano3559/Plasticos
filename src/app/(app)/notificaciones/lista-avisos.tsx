@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 
 export type Aviso = {
   id: string
-  tipo: "SALIDA" | "AJUSTE" | "STOCK_BAJO" | "RECHAZO"
+  tipo: "SALIDA" | "AJUSTE" | "STOCK_BAJO" | "RECHAZO" | "EXTRUSION"
   titulo: string
   detalle: string | null
   href: string | null
@@ -17,6 +17,7 @@ export type Aviso = {
 }
 
 const ICONO = {
+  EXTRUSION: { I: SlidersHorizontal, clase: "bg-info/10 text-info" },
   SALIDA: { I: ArrowUpFromLine, clase: "bg-info/10 text-info" },
   AJUSTE: { I: SlidersHorizontal, clase: "bg-warn/10 text-warn" },
   STOCK_BAJO: { I: TriangleAlert, clase: "bg-danger/10 text-danger" },
@@ -60,7 +61,7 @@ export function ListaAvisos({ avisos, recibe, maximo }: { avisos: Aviso[]; recib
           <h1 className="text-[26px] font-bold leading-tight sm:text-[28px]">Avisos</h1>
           <p className="mt-1 text-subdued">
             {sinLeer > 0 ? `${sinLeer} sin leer` : "Estás al día"}
-            {recibe && " · salidas, ajustes y rechazos de material, y stock bajo el mínimo"}
+            {recibe && " · movimientos de inventario, rechazos y partes de extrusión"}
           </p>
         </div>
         {sinLeer > 0 && (
