@@ -278,6 +278,8 @@ Cada importación conserva una versión del parte. Un archivo idéntico no dupli
 
 Las métricas incluyen material utilizado, kg producidos, bobinas, peso medio, desperdicio, rendimiento aparente, avance sobre pedido y balance por conciliar. Los reportes suman el detalle, no los totales almacenados por Excel. Los gráficos y la tabla respetan los filtros; la ficha y el avance por OT muestran el parte completo.
 
+Después de importar, **Planilla de extrusión** muestra el parte con la estructura del Excel: ficha técnica, encabezados agrupados, totales por material y filas con acumulados de consumo y bobinas. Tiene encabezados fijos y desplazamiento para pantallas pequeñas. Esta planilla conserva el orden original y muestra la OT completa; los filtros del periodo corresponden al análisis y al reporte de abajo.
+
 **Balance por conciliar = material utilizado − kg de bobinas − desperdicio**. No se interpreta automáticamente como merma, rechazo o stock disponible. En el ejemplo: 1.632 − 1.008 − 36 = **588 kg pendientes de conciliar**. El parte no crea movimientos de inventario, entregas, pagos ni pesajes operativos; sus reportes quedan separados para evitar duplicar los registros existentes. No se calcula OEE ni kg/h sin horas operativas. Los tiempos se cargan como `hh:mm` o duración Excel; números enteros sin unidad se rechazan.
 
 Al importar, ADMIN, GERENCIA y ALMACEN activos reciben un aviso en la campana, salvo quien hizo la importación. Incluye advertencias por balance, desperdicio superior al 5% (umbral de seguimiento), pedido alcanzado e interrupciones sin duración. Son avisos internos al importar, no correos ni notificaciones push. El aviso de pedido alcanzado no cierra la OT automáticamente.
